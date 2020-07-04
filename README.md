@@ -24,3 +24,5 @@ To avoid "Yak Shaving" as much as possible, Grav is designed to be a transport l
 ## Project status
 
 Grav is currently in prototype stages and will be developed alongside Vektor and Hive, who are nearing their own beta status.
+
+Copyright Suborbital contributors 2020

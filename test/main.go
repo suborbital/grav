@@ -11,14 +11,21 @@ import (
 func main() {
 	g := grav.New()
 
+	for i := 0; i < 10; i++ {
+		p := g.Connect()
+		j := i
+
+		p.On(func(msg message.Message) error {
+			fmt.Println(fmt.Sprintf("pod %d", j), string(msg.Data()))
+			return nil
+		})
+	}
+
 	pod := g.Connect()
 
-	pod.On(func(msg message.Message) error {
-		fmt.Println(string(msg.Data()))
-		return nil
-	})
+	for i := 0; i < 10; i++ {
+		pod.Emit(message.New("default", "12", []byte(fmt.Sprintf("hello, world %d", i))))
+	}
 
-	pod.Emit(message.New("default", "12", []byte("hello, world")))
-
-	time.Sleep(time.Duration(time.Second * 5))
+	time.Sleep(time.Duration(time.Second))
 }

@@ -85,11 +85,13 @@ func (p *Pod) start() {
 		for msg := range p.messageChan {
 			p.lock.Lock() // lock in case the onFunc gets replaced
 
-			if err := p.onFunc(msg); err != nil {
-				go func() {
-					// if the onFunc fails, send it back to the bus to be re-sent later
-					p.errorChan <- msg
-				}()
+			if p.onFunc != nil {
+				if err := p.onFunc(msg); err != nil {
+					go func() {
+						// if the onFunc fails, send it back to the bus to be re-sent later
+						p.errorChan <- msg
+					}()
+				}
 			}
 
 			p.lock.Unlock()

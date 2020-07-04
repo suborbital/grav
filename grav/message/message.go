@@ -1,4 +1,4 @@
-package grav
+package message
 
 import (
 	"encoding/json"
@@ -6,6 +6,12 @@ import (
 
 	"github.com/google/uuid"
 )
+
+// MsgFunc is a callback function that accepts a message and returns an error
+type MsgFunc func(Message) error
+
+// MsgChan is a channel that accepts a message
+type MsgChan chan Message
 
 // Message represents a message
 type Message interface {
@@ -18,8 +24,8 @@ type Message interface {
 	Unmarshal([]byte) error
 }
 
-// NewMessage creates a new Message with the built-in `_message` type
-func NewMessage(msgType, requestID string, data []byte) Message {
+// New creates a new Message with the built-in `_message` type
+func New(msgType, requestID string, data []byte) Message {
 	uuid := uuid.New()
 
 	m := &_message{

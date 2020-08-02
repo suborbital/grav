@@ -8,15 +8,15 @@ import (
 // Bus is responsible for emitting events among the connected pods
 // and managing the failure cases for those pods
 type Bus struct {
-	receiveChan message.MsgChan
-	pool        *connectionPool
+	busChan message.MsgChan
+	pool    *connectionPool
 }
 
 // New creates a new bus
 func New() *Bus {
 	b := &Bus{
-		receiveChan: make(chan message.Message, 256),
-		pool:        newConnectionPool(),
+		busChan: make(chan message.Message, 256),
+		pool:    newConnectionPool(),
 	}
 
 	b.start()
@@ -24,9 +24,9 @@ func New() *Bus {
 	return b
 }
 
-// RecieveChan returns the recieve chan
-func (b *Bus) RecieveChan() message.MsgChan {
-	return b.receiveChan
+// BusChan returns the recieve chan
+func (b *Bus) BusChan() message.MsgChan {
+	return b.busChan
 }
 
 // AddPod adds a pod to the connection pool
@@ -41,7 +41,7 @@ func (b *Bus) start() {
 		// start traversing around the ring to emit the message to
 		// each connection until landing back at the beginning of the
 		// ring, and repeat forever when each new message arrives
-		for msg := range b.receiveChan {
+		for msg := range b.busChan {
 			startingConn := b.pool.next()
 
 			b.traverse(msg, startingConn)

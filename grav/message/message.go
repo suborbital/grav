@@ -15,25 +15,49 @@ type MsgChan chan Message
 
 // Message represents a message
 type Message interface {
+	// Unique ID for this message
 	UUID() string
-	RequestID() string
+	// ID of the parent event or request, such as HTTP request
+	ParentID() string
+	// The UUID of the message being responded to, if any
+	ResponseTo() string
+	// Type of message (application-specific)
 	Type() string
+	// Time the message was emitted
 	Timestamp() time.Time
+	// Raw data of message
 	Data() []byte
+	// Encoded Message object
 	Marshal() []byte
+	// Unmarshal encoded Message into object
 	Unmarshal([]byte) error
 }
 
 // New creates a new Message with the built-in `_message` type
-func New(msgType, requestID string, data []byte) Message {
+func New(msgType string, data []byte) Message {
+	return new(msgType, "", "", data)
+}
+
+// NewWithParentID returns a new message with the provided parent ID
+func NewWithParentID(msgType, parentID string, data []byte) Message {
+	return new(msgType, parentID, "", data)
+}
+
+// NewResponseTo creates a new message in response to a previous message
+func NewResponseTo(msgType, responseTo string, data []byte) Message {
+	return new(msgType, "", responseTo, data)
+}
+
+func new(msgType, parentID, responseTo string, data []byte) Message {
 	uuid := uuid.New()
 
 	m := &_message{
 		Meta: _meta{
-			UUID:      uuid.String(),
-			RequestID: requestID,
-			MsgType:   msgType,
-			Timestamp: time.Now(),
+			UUID:       uuid.String(),
+			ParentID:   parentID,
+			ResponseTo: responseTo,
+			MsgType:    msgType,
+			Timestamp:  time.Now(),
 		},
 		Payload: _payload{
 			Data: data,
@@ -52,10 +76,11 @@ type _message struct {
 }
 
 type _meta struct {
-	UUID      string    `json:"uuid"`
-	RequestID string    `json:"request_id"`
-	MsgType   string    `json:"msg_type"`
-	Timestamp time.Time `json:"timestamp"`
+	UUID       string    `json:"uuid"`
+	ParentID   string    `json:"parent_id"`
+	ResponseTo string    `json:"response_to"`
+	MsgType    string    `json:"msg_type"`
+	Timestamp  time.Time `json:"timestamp"`
 }
 
 type _payload struct {
@@ -66,8 +91,12 @@ func (m *_message) UUID() string {
 	return m.Meta.UUID
 }
 
-func (m *_message) RequestID() string {
-	return m.Meta.RequestID
+func (m *_message) ParentID() string {
+	return m.Meta.ParentID
+}
+
+func (m *_message) ResponseTo() string {
+	return m.Meta.ResponseTo
 }
 
 func (m *_message) Type() string {

@@ -12,8 +12,8 @@ Goals:
 
 Non-Goals:
 - Replace a brokered message queue for large-scale systems
+- Have extremely high throughput capabilities
 - Support every type of messaging pattern
-- 
 
 ## Background
 

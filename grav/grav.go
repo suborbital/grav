@@ -24,7 +24,7 @@ func New() *Grav {
 
 // Connect creates a new connection (pod) to the bus
 func (g *Grav) Connect() *pod.Pod {
-	pod := pod.New("", g.bus.RecieveChan())
+	pod := pod.New("", g.bus.BusChan())
 
 	g.bus.AddPod(pod)
 

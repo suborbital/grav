@@ -7,6 +7,11 @@ import (
 	"github.com/google/uuid"
 )
 
+// DefaultType and other represent message consts
+const (
+	DefaultType string = "grav.default"
+)
+
 // MsgFunc is a callback function that accepts a message and returns an error
 type MsgFunc func(Message) error
 

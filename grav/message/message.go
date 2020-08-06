@@ -33,7 +33,7 @@ type Message interface {
 	// Raw data of message
 	Data() []byte
 	// Encoded Message object
-	Marshal() []byte
+	Marshal() ([]byte, error)
 	// Unmarshal encoded Message into object
 	Unmarshal([]byte) error
 }
@@ -51,6 +51,17 @@ func NewWithParentID(msgType, parentID string, data []byte) Message {
 // NewResponseTo creates a new message in response to a previous message
 func NewResponseTo(msgType, responseTo string, data []byte) Message {
 	return new(msgType, "", responseTo, data)
+}
+
+// NewFromJSON returns a default _message that has been unmarshalled from JSON.
+// Should only be used if the default _message type is being used.
+func NewFromJSON(bytes []byte) (Message, error) {
+	m := &_message{}
+	if err := m.Unmarshal(bytes); err != nil {
+		return nil, err
+	}
+
+	return m, nil
 }
 
 func new(msgType, parentID, responseTo string, data []byte) Message {
@@ -116,10 +127,13 @@ func (m *_message) Data() []byte {
 	return m.Payload.Data
 }
 
-func (m *_message) Marshal() []byte {
-	bytes, _ := json.Marshal(m)
+func (m *_message) Marshal() ([]byte, error) {
+	bytes, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
 
-	return bytes
+	return bytes, nil
 }
 
 func (m *_message) Unmarshal(bytes []byte) error {

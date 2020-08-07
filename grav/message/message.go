@@ -2,6 +2,8 @@ package message
 
 import (
 	"encoding/json"
+	"io/ioutil"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,15 +55,26 @@ func NewResponseTo(msgType, responseTo string, data []byte) Message {
 	return new(msgType, "", responseTo, data)
 }
 
-// NewFromJSON returns a default _message that has been unmarshalled from JSON.
+// NewFromBytes returns a default _message that has been unmarshalled from bytes.
 // Should only be used if the default _message type is being used.
-func NewFromJSON(bytes []byte) (Message, error) {
+func NewFromBytes(bytes []byte) (Message, error) {
 	m := &_message{}
 	if err := m.Unmarshal(bytes); err != nil {
 		return nil, err
 	}
 
 	return m, nil
+}
+
+// NewFromRequest extracts an encoded Message from an HTTP request
+func NewFromRequest(r *http.Request) (Message, error) {
+	defer r.Body.Close()
+	bytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewFromBytes(bytes)
 }
 
 func new(msgType, parentID, responseTo string, data []byte) Message {

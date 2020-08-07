@@ -10,7 +10,7 @@ func TestMessageMarshalUnmarshal(t *testing.T) {
 		t.Error(err)
 	}
 
-	m2, err := NewFromJSON(msgBytes)
+	m2, err := NewFromBytes(msgBytes)
 	if err != nil {
 		t.Error(err)
 	}

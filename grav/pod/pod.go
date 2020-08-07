@@ -38,19 +38,21 @@ type Pod struct {
 
 	messageChan message.MsgChan // messageChan is used to recieve messages coming from the bus
 	errorChan   message.MsgChan // errorChan is used to send failed messages back to the bus
+	busChan     message.MsgChan // busChan is used to emit messages to the bus
 
-	busChan message.MsgChan // busChan is used to emit messages to the bus
+	*messageFilter // the embedded messageFilter controls which messages reach the onFunc
 
-	lock sync.Mutex
+	sync.Mutex
 }
 
 // New creates a new Pod
 func New(group string, busChan message.MsgChan) *Pod {
 	p := &Pod{
-		GroupName:   group,
-		messageChan: make(chan message.Message, defaultPodChanSize),
-		errorChan:   make(chan message.Message, defaultPodChanSize),
-		busChan:     busChan,
+		GroupName:     group,
+		messageChan:   make(chan message.Message, defaultPodChanSize),
+		errorChan:     make(chan message.Message, defaultPodChanSize),
+		busChan:       busChan,
+		messageFilter: newMessageFilter(),
 	}
 
 	p.start()
@@ -61,8 +63,8 @@ func New(group string, busChan message.MsgChan) *Pod {
 // On allows the pod creator to recieve messages sent through this pod from the bus
 // Setting the On func can only be done once.
 func (p *Pod) On(onFunc message.MsgFunc) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+	p.Lock()
+	defer p.Unlock()
 
 	p.onFunc = onFunc
 }
@@ -70,6 +72,8 @@ func (p *Pod) On(onFunc message.MsgFunc) {
 // Emit emits a message to be routed to the bus
 func (p *Pod) Emit(msg message.Message) {
 	go func() {
+		p.FilterUUID(msg.UUID(), false) // don't allow the same message to bounce back through this pod
+
 		p.busChan <- msg
 	}()
 }
@@ -83,9 +87,10 @@ func (p *Pod) start() {
 	go func() {
 		// this loop ends when the bus closes the messageChan
 		for msg := range p.messageChan {
-			p.lock.Lock() // lock in case the onFunc gets replaced
+			p.Lock() // in case the onFunc gets replaced
 
-			if p.onFunc != nil {
+			// run the message through the filter before passing it to the onFunc
+			if p.onFunc != nil && p.allow(msg) {
 				if err := p.onFunc(msg); err != nil {
 					go func() {
 						// if the onFunc fails, send it back to the bus to be re-sent later
@@ -94,7 +99,7 @@ func (p *Pod) start() {
 				}
 			}
 
-			p.lock.Unlock()
+			p.Unlock()
 		}
 	}()
 }

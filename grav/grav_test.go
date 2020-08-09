@@ -29,7 +29,7 @@ func TestGravSanity(t *testing.T) {
 	pod := g.Connect()
 
 	for i := 0; i < 10; i++ {
-		pod.Emit(NewMsg(DefaultMsgType, []byte(fmt.Sprintf("hello, world %d", i))))
+		pod.Send(NewMsg(DefaultMsgType, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
 	time.Sleep(time.Duration(time.Second))
@@ -61,7 +61,7 @@ func TestPodFilter(t *testing.T) {
 	p2.On(onFunc)
 
 	for i := 0; i < 10; i++ {
-		p1.Emit(NewMsg(DefaultMsgType, []byte(fmt.Sprintf("hello, world %d", i))))
+		p1.Send(NewMsg(DefaultMsgType, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
 	time.Sleep(time.Duration(time.Second))

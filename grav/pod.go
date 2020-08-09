@@ -58,8 +58,8 @@ func newPod(group string, busChan MsgChan) *Pod {
 	return p
 }
 
-// On allows the pod creator to recieve messages sent through this pod from the bus
-// Setting the On func can only be done once.
+// On allows the pod creator to recieve messages sent through this pod from the bus.
+// Calling On multiple times causes an overwrite, to recieve with two different handlers, create two pods
 func (p *Pod) On(onFunc MsgFunc) {
 	p.Lock()
 	defer p.Unlock()
@@ -67,8 +67,8 @@ func (p *Pod) On(onFunc MsgFunc) {
 	p.onFunc = onFunc
 }
 
-// Emit emits a message to be routed to the bus
-func (p *Pod) Emit(msg Message) {
+// Send emits a message to be routed to the bus
+func (p *Pod) Send(msg Message) {
 	go func() {
 		p.FilterUUID(msg.UUID(), false) // don't allow the same message to bounce back through this pod
 

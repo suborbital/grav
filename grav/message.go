@@ -30,11 +30,13 @@ type Message interface {
 	ResponseTo() string
 	// Type of message (application-specific)
 	Type() string
-	// Time the message was emitted
+	// Time the message was sent
 	Timestamp() time.Time
 	// Raw data of message
 	Data() []byte
-	// Encoded Message object
+	// Unmarshal the message's data into a struct
+	UnmarshalData(interface{}) error
+	// Marshal the message itself to encoded bytes (JSON or otherwise)
 	Marshal() ([]byte, error)
 	// Unmarshal encoded Message into object
 	Unmarshal([]byte) error
@@ -138,6 +140,10 @@ func (m *_message) Timestamp() time.Time {
 
 func (m *_message) Data() []byte {
 	return m.Payload.Data
+}
+
+func (m *_message) UnmarshalData(target interface{}) error {
+	return json.Unmarshal(m.Payload.Data, target)
 }
 
 func (m *_message) Marshal() ([]byte, error) {

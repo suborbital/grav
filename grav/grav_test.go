@@ -5,8 +5,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/suborbital/grav/grav/message"
 )
 
 func TestGravSanity(t *testing.T) {
@@ -18,7 +16,7 @@ func TestGravSanity(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		p := g.Connect()
 
-		p.On(func(msg message.Message) error {
+		p.On(func(msg Message) error {
 			lock.Lock()
 			defer lock.Unlock()
 
@@ -31,7 +29,7 @@ func TestGravSanity(t *testing.T) {
 	pod := g.Connect()
 
 	for i := 0; i < 10; i++ {
-		pod.Emit(message.New(message.DefaultType, []byte(fmt.Sprintf("hello, world %d", i))))
+		pod.Emit(NewMsg(DefaultMsgType, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
 	time.Sleep(time.Duration(time.Second))
@@ -47,7 +45,7 @@ func TestPodFilter(t *testing.T) {
 	lock := sync.Mutex{}
 	count := 0
 
-	onFunc := func(msg message.Message) error {
+	onFunc := func(msg Message) error {
 		lock.Lock()
 		defer lock.Unlock()
 
@@ -63,7 +61,7 @@ func TestPodFilter(t *testing.T) {
 	p2.On(onFunc)
 
 	for i := 0; i < 10; i++ {
-		p1.Emit(message.New(message.DefaultType, []byte(fmt.Sprintf("hello, world %d", i))))
+		p1.Emit(NewMsg(DefaultMsgType, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
 	time.Sleep(time.Duration(time.Second))

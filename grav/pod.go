@@ -1,6 +1,7 @@
 package grav
 
 import (
+	"errors"
 	"sync"
 )
 
@@ -22,13 +23,11 @@ const (
 Created with Monodraw
 **/
 
-// Pod is a connection to the bus
-// Pods are bi-directional. Messages can be sent
-// through them to its owner, and messages can be emitted
-// through them from its owner. Pods are meant to be
-// extremely lightweight with no persistence
-// they are meant to quickly and immediately route a message between
-// its owner and the Bus. The Bus is responsible for all "smarts".
+// Pod is a connection to Grav
+// Pods are bi-directional. Messages can be sent to them from the bus, and they can be used to send messages
+// to the bus. Pods are meant to be extremely lightweight with no persistence they are meant to quickly
+// and immediately route a message between its owner and the Bus. The Bus is responsible for any "smarts".
+// Messages coming from the bus are filtered using the pod's messageFilter, which is configurable by the caller.
 type Pod struct {
 	GroupName string
 
@@ -58,13 +57,62 @@ func newPod(group string, busChan MsgChan) *Pod {
 	return p
 }
 
-// On allows the pod creator to recieve messages sent through this pod from the bus.
-// Calling On multiple times causes an overwrite, to recieve with two different handlers, create two pods
+// On sets the function to be called whenever this pod recieves a message from the bus. If nil is passed, the pod will ignore all messages.
+// Calling On multiple times causes the function to be overwritten. To recieve using two different functions, create two pods.
 func (p *Pod) On(onFunc MsgFunc) {
 	p.Lock()
 	defer p.Unlock()
 
+	// reset the message filter when the onFunc is changed
+	p.messageFilter = newMessageFilter()
+
 	p.onFunc = onFunc
+}
+
+// OnType sets the function to be called whenever this pod recieves a message and sets the pod's filter to only include certain message types
+func (p *Pod) OnType(onFunc MsgFunc, msgTypes ...string) {
+	p.Lock()
+	defer p.Unlock()
+
+	// reset the message filter when the onFunc is changed
+	p.messageFilter = newMessageFilter()
+	p.TypeInclusive = false // only allow the listed types
+
+	for _, t := range msgTypes {
+		p.FilterType(t, true)
+	}
+
+	p.onFunc = onFunc
+}
+
+// ErrMsgNotWanted is used by WaitOn to determine if the current message is what's being waited on
+var ErrMsgNotWanted = errors.New("message not wanted")
+
+// WaitOn takes a function to be called whenever this pod recieves a message and blocks until that function returns
+// something other than ErrMsgNotWanted. WaitOn should be used if there is a need to wait for a particular message.
+// When the onFunc returns something other than ErrMsgNotWanted (such as nil or a different error), WaitOn will return and set
+// the onFunc to nil. If an error other than ErrMsgNotWanted is returned from the onFunc, it will be propogated to the caller.
+func (p *Pod) WaitOn(onFunc MsgFunc) error {
+	p.Lock()
+	errChan := make(chan error)
+
+	p.onFunc = func(msg Message) error {
+		if err := onFunc(msg); err != ErrMsgNotWanted {
+			errChan <- err
+		}
+
+		return nil
+	}
+	p.Unlock() // can't stay locked here or the onFunc will never be called
+
+	err := <-errChan
+
+	p.Lock()
+	defer p.Unlock()
+
+	p.onFunc = nil
+
+	return err
 }
 
 // Send emits a message to be routed to the bus
@@ -76,8 +124,8 @@ func (p *Pod) Send(msg Message) {
 	}()
 }
 
-// BusChans returns the messageChan and errorChan to be used by the bus
-func (p *Pod) BusChans() (MsgChan, MsgChan) {
+// busChans returns the messageChan and errorChan to be used by the bus
+func (p *Pod) busChans() (MsgChan, MsgChan) {
 	return p.messageChan, p.errorChan
 }
 

@@ -70,7 +70,7 @@ type podConnection struct {
 }
 
 func newPodConnection(id int64, pod *Pod) *podConnection {
-	msgChan, errChan := pod.BusChans()
+	msgChan, errChan := pod.busChans()
 
 	p := &podConnection{
 		ID:          id,

@@ -29,8 +29,6 @@ Created with Monodraw
 // and immediately route a message between its owner and the Bus. The Bus is responsible for any "smarts".
 // Messages coming from the bus are filtered using the pod's messageFilter, which is configurable by the caller.
 type Pod struct {
-	GroupName string
-
 	onFunc MsgFunc // the onFunc is called whenever a message is recieved
 
 	messageChan MsgChan // messageChan is used to recieve messages coming from the bus
@@ -45,7 +43,6 @@ type Pod struct {
 // newPod creates a new Pod
 func newPod(group string, busChan MsgChan) *Pod {
 	p := &Pod{
-		GroupName:     group,
 		messageChan:   make(chan Message, defaultPodChanSize),
 		errorChan:     make(chan Message, defaultPodChanSize),
 		busChan:       busChan,

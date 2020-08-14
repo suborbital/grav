@@ -5,7 +5,14 @@ import (
 	"sync"
 )
 
-var errFailedMessage = errors.New("pod reports failed message")
+const (
+	highWaterMark = 64
+)
+
+var (
+	errFailedMessage    = errors.New("pod reports failed message")
+	errFailedMessageMax = errors.New("pod reports max number of failed messages, will terminate connection")
+)
 
 // connectionPool is a ring of connections to pods
 // which will be iterated over constantly in order to send
@@ -27,6 +34,14 @@ func newConnectionPool() *connectionPool {
 	return p
 }
 
+// peek returns a peek at the next connection in the ring wihout advancing the ring's current location
+func (c *connectionPool) peek() *podConnection {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	return c.current.next
+}
+
 // next returns the next connection in the ring
 func (c *connectionPool) next() *podConnection {
 	c.lock.Lock()
@@ -35,6 +50,28 @@ func (c *connectionPool) next() *podConnection {
 	c.current = c.current.next
 
 	return c.current
+}
+
+// deleteNext deletes the next connection in the ring
+// this is useful after having checkError'd the next conn
+// and seeing that it's unhealthy
+func (c *connectionPool) deleteNext() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	next := c.current.next
+
+	// if there's only one thing in the ring, empty the ring
+	if next == c.current {
+		c.current = nil
+		return
+	}
+
+	// close the messageChan so the pod can know it's been cut off
+	close(next.messageChan)
+
+	// cut out `next` and link `current` to `next-next`
+	c.current.next = next.next
 }
 
 // insert inserts a new connection into the ring
@@ -47,6 +84,7 @@ func (c *connectionPool) insert(pod *Pod) {
 
 	conn := newPodConnection(id, pod)
 
+	// if there's nothing in the ring, create a "ring of one"
 	if c.current == nil {
 		conn.next = conn
 		c.current = conn
@@ -58,7 +96,7 @@ func (c *connectionPool) insert(pod *Pod) {
 // podConnection is a connection to a pod via its messageChan
 // podConnection is also a circular linked list/ring of connections
 // that is meant to be iterated around and inserted into/removed from
-// forever as the bus emits events to the registered pods
+// forever as the bus sends events to the registered pods
 type podConnection struct {
 	ID          int64
 	messageChan MsgChan
@@ -83,7 +121,7 @@ func newPodConnection(id int64, pod *Pod) *podConnection {
 	return p
 }
 
-func (p *podConnection) emit(msg Message) {
+func (p *podConnection) send(msg Message) {
 	go func() {
 		p.messageChan <- msg
 	}()
@@ -93,9 +131,8 @@ func (p *podConnection) emit(msg Message) {
 func (p *podConnection) checkErr() error {
 	var err error
 
-	for {
-		done := false
-
+	done := false
+	for done {
 		select {
 		case failedMsg := <-p.errorChan:
 			p.failed = append(p.failed, failedMsg)
@@ -109,11 +146,15 @@ func (p *podConnection) checkErr() error {
 		}
 	}
 
+	if len(p.failed) >= highWaterMark {
+		err = errFailedMessageMax
+	}
+
 	return err
 }
 
 // flushFailed takes all of the failed messages in the failed queue
-// and pushes them out into the pod's connection
+// and pushes them back out onto the pod's channel
 func (p *podConnection) flushFailed() {
 	for i := range p.failed {
 		failedMsg := p.failed[i]

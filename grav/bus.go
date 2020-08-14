@@ -26,7 +26,7 @@ func (b *messageBus) addPod(pod *Pod) {
 
 func (b *messageBus) start() {
 	go func() {
-		// continually take new messages and for each message,
+		// continually take new messages and for each,
 		// grab the next active connection from the ring and then
 		// start traversing around the ring to emit the message to
 		// each connection until landing back at the beginning of the
@@ -41,30 +41,37 @@ func (b *messageBus) start() {
 
 func (b *messageBus) traverse(msg Message, start *podConnection) {
 	conn := start
+
 	for {
-		if err := conn.checkErr(); err != nil {
-			// may want to do something here in the future
-			// such as mark the connection as unhealthy
-			// currently it just buffers the failed message
-			// into the connction's "failed" queue
+		// send the message to the pod
+		conn.send(msg)
+
+		// peek gives us the next conn without advancing the ring
+		// this makes it easy to delete the next conn if it's unhealthy
+		next := b.pool.peek()
+		if next.ID == start.ID {
+			// if we have arrived back at the starting point
+			// on the ring, we have done our job and are ready
+			// for the next message. Advance the ring to the start so that the
+			// next message starts with the next pod (the starting
+			// point advances with each message)
+			b.pool.next()
+			break
+		}
+
+		// check if the next pod is experiencing errors
+		if err := next.checkErr(); err != nil {
+			if err == errFailedMessageMax {
+				b.pool.deleteNext()
+			}
 		} else {
 			// if the most recent error check comes back clean,
 			// then tell the connection to flush any failed messages
 			// this is a no-op if there are no failed messages queued
-			conn.flushFailed()
+			next.flushFailed()
 		}
 
-		// send the message to the pod
-		conn.emit(msg)
-
-		next := b.pool.next()
-		if next.ID == start.ID {
-			// if we have arrived back at the starting point
-			// on the ring, we have done our job and are ready
-			// for the next message
-			break
-		}
-
-		conn = next
+		// now advance the ring and start again
+		conn = b.pool.next()
 	}
 }

@@ -61,19 +61,19 @@ func (c *connectionPool) deleteNext() {
 
 	next := c.current.next
 
-	// if there's only one thing in the ring, empty the ring
-	if next == c.current {
-		c.current = nil
-		return
-	}
-
-	next.active = false
+	// lock the deadlock so any straggling send()s block forever
+	next.deadLock.Lock()
 
 	// close the messageChan so the pod can know it's been cut off
 	close(next.messageChan)
 
-	// cut out `next` and link `current` to `next-next`
-	c.current.next = next.next
+	if next == c.current {
+		// if there's only one thing in the ring, empty the ring
+		c.current = nil
+	} else {
+		// cut out `next` and link `current` to `next-next`
+		c.current.next = next.next
+	}
 }
 
 // insert inserts a new connection into the ring
@@ -101,11 +101,12 @@ func (c *connectionPool) insert(pod *Pod) {
 // forever as the bus sends events to the registered pods
 type podConnection struct {
 	ID          int64
-	active      bool
 	messageChan MsgChan
 	errorChan   MsgChan
 
 	failed []Message
+
+	deadLock sync.RWMutex
 
 	next *podConnection
 }
@@ -115,10 +116,10 @@ func newPodConnection(id int64, pod *Pod) *podConnection {
 
 	p := &podConnection{
 		ID:          id,
-		active:      true,
 		messageChan: msgChan,
 		errorChan:   errChan,
 		failed:      []Message{},
+		deadLock:    sync.RWMutex{},
 		next:        nil,
 	}
 
@@ -127,6 +128,10 @@ func newPodConnection(id int64, pod *Pod) *podConnection {
 
 func (p *podConnection) send(msg Message) {
 	go func() {
+		// get read-lock to ensure we're not dead
+		p.deadLock.RLock()
+		defer p.deadLock.RUnlock()
+
 		p.messageChan <- msg
 	}()
 }
@@ -168,9 +173,7 @@ func (p *podConnection) flushFailed() {
 	for i := range p.failed {
 		failedMsg := p.failed[i]
 
-		go func() {
-			p.messageChan <- failedMsg
-		}()
+		p.send(failedMsg)
 	}
 
 	if len(p.failed) > 0 {

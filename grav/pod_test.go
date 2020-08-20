@@ -218,6 +218,6 @@ func TestPodFlushFailed(t *testing.T) {
 	// 20 because upon handling the first "good" message, the bus should flush
 	// the 5 "failed" messages back into the connection thus repeating them
 	if count != 20 {
-		t.Errorf("incorrect number of messages, expected 20, got %d", count)
+		t.Errorf("incorrect number of messages, expected 2, got %d", count)
 	}
 }

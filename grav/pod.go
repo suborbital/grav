@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	defaultPodChanSize = 64
+	defaultPodChanSize = 128
 )
 
 /**

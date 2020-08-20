@@ -21,7 +21,7 @@ func TestGravSingle(t *testing.T) {
 	})
 
 	p2 := g.Connect()
-	p2.Send(NewMsg(DefaultMsgType, []byte("hello, world")))
+	p2.Send(NewMsg(MsgTypeDefault, []byte("hello, world")))
 
 	time.Sleep(time.Duration(time.Second))
 
@@ -52,7 +52,7 @@ func TestGravSanity(t *testing.T) {
 	pod := g.Connect()
 
 	for i := 0; i < 10; i++ {
-		pod.Send(NewMsg(DefaultMsgType, []byte(fmt.Sprintf("hello, world %d", i))))
+		pod.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
 	time.Sleep(time.Duration(time.Second))
@@ -92,7 +92,7 @@ func TestGravBench(t *testing.T) {
 
 	start := time.Now()
 	for i := 0; i < 10; i++ {
-		pod.Send(NewMsg(DefaultMsgType, []byte(fmt.Sprintf("hello, world %d", i))))
+		pod.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
 	<-doneChan

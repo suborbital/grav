@@ -40,6 +40,7 @@ func (b *messageBus) start() {
 }
 
 func (b *messageBus) traverse(msg Message, start *podConnection) {
+	startID := start.ID
 	conn := start
 
 	for {
@@ -49,19 +50,14 @@ func (b *messageBus) traverse(msg Message, start *podConnection) {
 		// peek gives us the next conn without advancing the ring
 		// this makes it easy to delete the next conn if it's unhealthy
 		next := b.pool.peek()
-		if next.ID == start.ID {
-			// if we have arrived back at the starting point
-			// on the ring, we have done our job and are ready
-			// for the next message. Advance the ring to the start so that the
-			// next message starts with the next pod (the starting
-			// point advances with each message)
-			b.pool.next()
-			break
-		}
 
 		// check if the next pod is experiencing errors
 		if err := next.checkErr(); err != nil {
 			if err == errFailedMessageMax {
+				if startID == next.ID {
+					startID = next.next.ID
+				}
+
 				b.pool.deleteNext()
 			}
 		} else {
@@ -71,7 +67,13 @@ func (b *messageBus) traverse(msg Message, start *podConnection) {
 			next.flushFailed()
 		}
 
-		// now advance the ring and start again
+		// now advance the ring
 		conn = b.pool.next()
+
+		if startID == conn.ID {
+			// if we have arrived back at the starting point on the ring
+			// we have done our job and are ready for the next message
+			break
+		}
 	}
 }

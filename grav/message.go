@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// DefaultMsgType and other represent message consts
+// MsgTypeDefault and other represent message consts
 const (
-	DefaultMsgType string = "grav.default"
+	MsgTypeDefault string = "grav.default"
 )
 
 // MsgFunc is a callback function that accepts a message and returns an error

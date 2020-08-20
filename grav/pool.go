@@ -132,17 +132,22 @@ func (p *podConnection) checkErr() error {
 	var err error
 
 	done := false
-	for done {
+	for !done {
 		select {
 		case failedMsg := <-p.errorChan:
-			p.failed = append(p.failed, failedMsg)
-			err = errFailedMessage
+			if failedMsg != nil {
+				p.failed = append(p.failed, failedMsg)
+				err = errFailedMessage
+			} else {
+				done = true
+			}
 		default:
-			done = true
-		}
+			// if there's no nil on the channel, then we don't know if there's any new successes
+			if len(p.failed) > 0 {
+				err = errFailedMessage
+			}
 
-		if done {
-			break
+			done = true
 		}
 	}
 
@@ -164,7 +169,9 @@ func (p *podConnection) flushFailed() {
 		}()
 	}
 
-	p.failed = []Message{}
+	if len(p.failed) > 0 {
+		p.failed = []Message{}
+	}
 }
 
 // insertAfter inserts a new connection into the ring

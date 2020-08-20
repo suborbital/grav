@@ -32,6 +32,13 @@ func (b *messageBus) start() {
 		// each connection until landing back at the beginning of the
 		// ring, and repeat forever when each new message arrives
 		for msg := range b.busChan {
+			for {
+				// make sure the pod we start with is healthy
+				if err := b.pool.checkNextPod(); err == nil {
+					break
+				}
+			}
+
 			startingConn := b.pool.next()
 
 			b.traverse(msg, startingConn)
@@ -47,24 +54,11 @@ func (b *messageBus) traverse(msg Message, start *podConnection) {
 		// send the message to the pod
 		conn.send(msg)
 
-		// peek gives us the next conn without advancing the ring
-		// this makes it easy to delete the next conn if it's unhealthy
 		next := b.pool.peek()
-
-		// check if the next pod is experiencing errors
-		if err := next.checkErr(); err != nil {
-			if err == errFailedMessageMax {
-				if startID == next.ID {
-					startID = next.next.ID
-				}
-
-				b.pool.deleteNext()
+		if err := b.pool.checkNextPod(); err != nil {
+			if startID == next.ID {
+				startID = next.next.ID
 			}
-		} else {
-			// if the most recent error check comes back clean,
-			// then tell the connection to flush any failed messages
-			// this is a no-op if there are no failed messages queued
-			next.flushFailed()
 		}
 
 		// now advance the ring

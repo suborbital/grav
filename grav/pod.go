@@ -144,16 +144,13 @@ func (p *Pod) start() {
 
 			// run the message through the filter before passing it to the onFunc
 			if p.onFunc != nil && p.allow(msg) {
-				err := p.onFunc(msg)
-				go func() {
-					if err != nil {
-						// if the onFunc failed, send it back to the bus to be re-sent later
-						p.errorChan <- msg
-					} else {
-						// if it was successful, a nil on the channel lets the conn know all is well
-						p.errorChan <- nil
-					}
-				}()
+				if err := p.onFunc(msg); err != nil {
+					// if the onFunc failed, send it back to the bus to be re-sent later
+					p.errorChan <- msg
+				} else {
+					// if it was successful, a nil on the channel lets the conn know all is well
+					p.errorChan <- nil
+				}
 			}
 
 			p.RUnlock()

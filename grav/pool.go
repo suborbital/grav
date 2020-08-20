@@ -52,6 +52,27 @@ func (c *connectionPool) next() *podConnection {
 	return c.current
 }
 
+func (c *connectionPool) checkNextPod() error {
+	// peek gives us the next conn without advancing the ring
+	// this makes it easy to delete the next conn if it's unhealthy
+	next := c.peek()
+
+	// check if the next pod is experiencing errors
+	if err := next.checkErr(); err != nil {
+		if err == errFailedMessageMax {
+			c.deleteNext()
+			return errors.New("deleting next podConnection")
+		}
+	} else {
+		// if the most recent error check comes back clean,
+		// then tell the connection to flush any failed messages
+		// this is a no-op if there are no failed messages queued
+		next.flushFailed()
+	}
+
+	return nil
+}
+
 // deleteNext deletes the next connection in the ring
 // this is useful after having checkError'd the next conn
 // and seeing that it's unhealthy

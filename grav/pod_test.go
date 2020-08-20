@@ -112,8 +112,15 @@ func TestPodFailure(t *testing.T) {
 
 	pod := g.Connect()
 
-	// send 74 "bad" messages (64 plus 10 to go past the highwater mark)
-	for i := 0; i < 74; i++ {
+	// send 64 "bad" messages (64 reaches the highwater mark)
+	for i := 0; i < 64; i++ {
+		pod.Send(NewMsg(msgTypeBad, []byte(fmt.Sprintf("hello, world %d", i))))
+	}
+
+	time.Sleep(time.Duration(time.Second))
+
+	// send 10 more "bad" messages
+	for i := 0; i < 10; i++ {
 		pod.Send(NewMsg(msgTypeBad, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
@@ -130,13 +137,12 @@ func TestPodFailure(t *testing.T) {
 		}
 	}
 
-	// 732 because the 64th message to the "bad" pod would have put it
-	// over the highwater mark and so the last 8 or 9 message would never be delievered
-	// pod deletion is not "exact" as it can sometimes take an extra ring traversal
-	// to detect the highwater mark (see checkErr's default clause, which is hit sometimes
-	// even if a failed message is coming from the previous traversal)
-	if count > 732 {
-		t.Errorf("incorrect number of messages, expected <= 732, got %d", count)
+	// 730 because the 64th message to the "bad" pod put it over the highwater
+	// mark and so the last 10 message would never be delievered
+	// sleeps were needed to allow all of the internal goroutines to finish execing
+	// in the worst case scenario of a single process machine (which lots of containers are)
+	if count != 730 {
+		t.Errorf("incorrect number of messages, expected 730, got %d", count)
 	}
 
 	// the first pod should now have been disconnected, causing only 9 recievers reset and test again
@@ -218,6 +224,6 @@ func TestPodFlushFailed(t *testing.T) {
 	// 20 because upon handling the first "good" message, the bus should flush
 	// the 5 "failed" messages back into the connection thus repeating them
 	if count != 20 {
-		t.Errorf("incorrect number of messages, expected 2, got %d", count)
+		t.Errorf("incorrect number of messages, expected 20, got %d", count)
 	}
 }

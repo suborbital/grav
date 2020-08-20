@@ -67,6 +67,8 @@ func (c *connectionPool) deleteNext() {
 		return
 	}
 
+	next.active = false
+
 	// close the messageChan so the pod can know it's been cut off
 	close(next.messageChan)
 
@@ -99,6 +101,7 @@ func (c *connectionPool) insert(pod *Pod) {
 // forever as the bus sends events to the registered pods
 type podConnection struct {
 	ID          int64
+	active      bool
 	messageChan MsgChan
 	errorChan   MsgChan
 
@@ -112,6 +115,7 @@ func newPodConnection(id int64, pod *Pod) *podConnection {
 
 	p := &podConnection{
 		ID:          id,
+		active:      true,
 		messageChan: msgChan,
 		errorChan:   errChan,
 		failed:      []Message{},

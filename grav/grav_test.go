@@ -99,7 +99,7 @@ func TestGravBench(t *testing.T) {
 	duration := time.Since(start).Seconds()
 
 	fmt.Println(duration, "seconds")
-	if duration > 0.4 {
+	if duration > 2 {
 		t.Error("delivering 1M messages took too long!")
 	}
 

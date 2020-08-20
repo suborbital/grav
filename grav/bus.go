@@ -45,7 +45,9 @@ func (b *messageBus) traverse(msg Message, start *podConnection) {
 
 	for {
 		// send the message to the pod
-		conn.send(msg)
+		if conn.active {
+			conn.send(msg)
+		}
 
 		// peek gives us the next conn without advancing the ring
 		// this makes it easy to delete the next conn if it's unhealthy

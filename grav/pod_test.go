@@ -190,21 +190,6 @@ func TestPodFlushFailed(t *testing.T) {
 
 	time.Sleep(time.Duration(time.Second))
 
-	count := 0
-	more := true
-	for more {
-		select {
-		case <-counter:
-			count++
-		default:
-			more = false
-		}
-	}
-
-	if count != 5 {
-		t.Errorf("incorrect number of messages, expected 5, got %d", count)
-	}
-
 	// replace the OnFunc to not error when the flushed messages come back through
 	p.On(func(msg Message) error {
 		counter <- true
@@ -219,8 +204,8 @@ func TestPodFlushFailed(t *testing.T) {
 
 	time.Sleep(time.Duration(time.Second))
 
-	count = 0
-	more = true
+	count := 0
+	more := true
 	for more {
 		select {
 		case <-counter:
@@ -230,9 +215,9 @@ func TestPodFlushFailed(t *testing.T) {
 		}
 	}
 
-	// 15 because upon handling the first "good" message, the bus should flush
+	// 20 because upon handling the first "good" message, the bus should flush
 	// the 5 "failed" messages back into the connection thus repeating them
-	if count != 15 {
-		t.Errorf("incorrect number of messages, expected 15, got %d", count)
+	if count != 20 {
+		t.Errorf("incorrect number of messages, expected 20, got %d", count)
 	}
 }

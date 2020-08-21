@@ -24,14 +24,12 @@ func New() *Grav {
 }
 
 // NewWithTransport creates a new Grav with a transport plugin configured
-func NewWithTransport(tspt Transport) *Grav {
+func NewWithTransport(tsptFunc CreateTransportFunc, opts *TransportOpts) *Grav {
 	g := &Grav{
-		bus:  newMessageBus(),
-		tspt: tspt,
+		bus: newMessageBus(),
 	}
 
-	// give the transport the ability to create pods
-	tspt.UseConnectFunc(g.Connect)
+	g.tspt = tsptFunc(opts, g.Connect)
 
 	return g
 }

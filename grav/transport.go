@@ -10,9 +10,9 @@ type CreateTransportFunc func(*TransportOpts, ConnectFunc) Transport
 
 // TransportOpts is a set of options for transports
 type TransportOpts struct {
-	logger vlog.Logger
-	port   int
-	custom interface{}
+	Logger vlog.Logger
+	Port   int
+	Custom interface{}
 }
 
 // Transport represents a Grav transport plugin
@@ -26,8 +26,8 @@ type Transport interface {
 // DefaultTransportOpts returns the default Grav Transport options
 func DefaultTransportOpts() *TransportOpts {
 	to := &TransportOpts{
-		logger: vlog.DefaultLogger(),
-		port:   8080,
+		Logger: vlog.DefaultLogger(),
+		Port:   8080,
 	}
 
 	return to

@@ -1,7 +1,19 @@
 package grav
 
+import "github.com/suborbital/vektor/vlog"
+
 // ConnectFunc represents a function that returns a pod conntected to Grav
 type ConnectFunc func() *Pod
+
+// CreateTransportFunc is a function that returns a transport
+type CreateTransportFunc func(*TransportOpts, ConnectFunc) Transport
+
+// TransportOpts is a set of options for transports
+type TransportOpts struct {
+	logger vlog.Logger
+	port   int
+	custom interface{}
+}
 
 // Transport represents a Grav transport plugin
 type Transport interface {
@@ -9,6 +21,14 @@ type Transport interface {
 	Serve() error
 	// ConnectEndpoint indicates to the Transport that a connection to a remote endpoint is needed
 	ConnectEndpoint(string) error
-	// UseConnectFunc allows Grav to provide a function for the Transport to create a new pod connected to Grav
-	UseConnectFunc(ConnectFunc)
+}
+
+// DefaultTransportOpts returns the default Grav Transport options
+func DefaultTransportOpts() *TransportOpts {
+	to := &TransportOpts{
+		logger: vlog.DefaultLogger(),
+		port:   8080,
+	}
+
+	return to
 }

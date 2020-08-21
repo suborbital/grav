@@ -26,12 +26,19 @@ func (b *messageBus) addPod(pod *Pod) {
 
 func (b *messageBus) start() {
 	go func() {
-		// continually take new messages and for each message,
+		// continually take new messages and for each,
 		// grab the next active connection from the ring and then
 		// start traversing around the ring to emit the message to
 		// each connection until landing back at the beginning of the
 		// ring, and repeat forever when each new message arrives
 		for msg := range b.busChan {
+			for {
+				// make sure the pod we start with is healthy
+				if err := b.pool.checkNextPod(); err == nil {
+					break
+				}
+			}
+
 			startingConn := b.pool.next()
 
 			b.traverse(msg, startingConn)
@@ -40,31 +47,27 @@ func (b *messageBus) start() {
 }
 
 func (b *messageBus) traverse(msg Message, start *podConnection) {
+	startID := start.ID
 	conn := start
+
 	for {
-		if err := conn.checkErr(); err != nil {
-			// may want to do something here in the future
-			// such as mark the connection as unhealthy
-			// currently it just buffers the failed message
-			// into the connction's "failed" queue
-		} else {
-			// if the most recent error check comes back clean,
-			// then tell the connection to flush any failed messages
-			// this is a no-op if there are no failed messages queued
-			conn.flushFailed()
+		// send the message to the pod
+		conn.send(msg)
+
+		next := b.pool.peek()
+		if err := b.pool.checkNextPod(); err != nil {
+			if startID == next.ID {
+				startID = next.next.ID
+			}
 		}
 
-		// send the message to the pod
-		conn.emit(msg)
+		// now advance the ring
+		conn = b.pool.next()
 
-		next := b.pool.next()
-		if next.ID == start.ID {
-			// if we have arrived back at the starting point
-			// on the ring, we have done our job and are ready
-			// for the next message
+		if startID == conn.ID {
+			// if we have arrived back at the starting point on the ring
+			// we have done our job and are ready for the next message
 			break
 		}
-
-		conn = next
 	}
 }

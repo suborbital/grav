@@ -38,17 +38,17 @@ func (mf *messageFilter) allow(msg Message) bool {
 	//	- a filter entry exists and it's value is false
 	//	- a filter entry doesn't exist and its inclusive rule is false
 
-	allowType, exists := mf.TypeMap[msg.Type()]
-	if exists && !allowType {
+	allowType, typeExists := mf.TypeMap[msg.Type()]
+	if typeExists && !allowType {
 		return false
-	} else if !exists && !mf.TypeInclusive {
+	} else if !typeExists && !mf.TypeInclusive {
 		return false
 	}
 
-	allowUUID, exists := mf.UUIDMap[msg.UUID()]
-	if exists && !allowUUID {
+	allowUUID, uuidExists := mf.UUIDMap[msg.UUID()]
+	if uuidExists && !allowUUID {
 		return false
-	} else if !exists && !mf.UUIDInclusive {
+	} else if !uuidExists && !mf.UUIDInclusive {
 		return false
 	}
 

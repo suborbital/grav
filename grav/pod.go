@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	defaultPodChanSize = 64
+	defaultPodChanSize = 128
 )
 
 /**
@@ -16,7 +16,7 @@ const (
 ┌────────┐                    │       		        │             ┌───────────────┐
 │  Bus   │                    │        Pod          │             │   Pod Owner   │
 └────────┘                    │       		        │             └───────────────┘
-            ◀───BusChan------─◀─────────────────────◀────Emit────
+            ◀───BusChan------─◀─────────────────────◀────Send────
                               │                     │
                               └─────────────────────┘
 
@@ -37,7 +37,8 @@ type Pod struct {
 
 	*messageFilter // the embedded messageFilter controls which messages reach the onFunc
 
-	sync.Mutex
+	dead bool
+	sync.RWMutex
 }
 
 // newPod creates a new Pod
@@ -47,6 +48,8 @@ func newPod(group string, busChan MsgChan) *Pod {
 		errorChan:     make(chan Message, defaultPodChanSize),
 		busChan:       busChan,
 		messageFilter: newMessageFilter(),
+		dead:          false,
+		RWMutex:       sync.RWMutex{},
 	}
 
 	p.start()
@@ -114,6 +117,13 @@ func (p *Pod) WaitOn(onFunc MsgFunc) error {
 
 // Send emits a message to be routed to the bus
 func (p *Pod) Send(msg Message) {
+	p.RLock()
+	defer p.RUnlock()
+
+	if p.dead {
+		return
+	}
+
 	go func() {
 		p.FilterUUID(msg.UUID(), false) // don't allow the same message to bounce back through this pod
 
@@ -130,19 +140,26 @@ func (p *Pod) start() {
 	go func() {
 		// this loop ends when the bus closes the messageChan
 		for msg := range p.messageChan {
-			p.Lock() // in case the onFunc gets replaced
+			p.RLock() // in case the onFunc gets replaced
 
 			// run the message through the filter before passing it to the onFunc
 			if p.onFunc != nil && p.allow(msg) {
 				if err := p.onFunc(msg); err != nil {
-					go func() {
-						// if the onFunc fails, send it back to the bus to be re-sent later
-						p.errorChan <- msg
-					}()
+					// if the onFunc failed, send it back to the bus to be re-sent later
+					p.errorChan <- msg
+				} else {
+					// if it was successful, a nil on the channel lets the conn know all is well
+					p.errorChan <- nil
 				}
 			}
 
-			p.Unlock()
+			p.RUnlock()
 		}
+
+		// if we've gotten here, the podConnection was closed and we should no longer do anything
+		p.Lock()
+		defer p.Unlock()
+
+		p.dead = true
 	}()
 }

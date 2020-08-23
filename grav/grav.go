@@ -15,14 +15,22 @@ type Grav struct {
 
 // New creates a new Grav instance
 func New() *Grav {
-	return NewWithTransport(nil)
+	return NewWithTransport(nil, nil)
 }
 
 // NewWithTransport creates a new Grav with a transport plugin configured
-func NewWithTransport(tspt Transport) *Grav {
+func NewWithTransport(tspt Transport, opts *TransportOpts) *Grav {
 	g := &Grav{
 		bus:       newMessageBus(),
 		transport: tspt,
+	}
+
+	if tspt != nil {
+		go func() {
+			if err := tspt.Serve(opts, g.Connect()); err != nil {
+				// not sure what to do here, yet
+			}
+		}()
 	}
 
 	return g
@@ -44,15 +52,4 @@ func (g *Grav) ConnectEndpoint(endpoint string) error {
 	}
 
 	return g.transport.ConnectEndpoint(endpoint, g.Connect)
-}
-
-// Serve directs the configured transport plugin to serve an endpoint that other nodes can connect to
-// Calling Serve will block, so if the Grav endpoint is meant to run in the background, it should be called on
-// a goroutine. Calling Serve is optional if incoming connections are not needed (or if no transport is being used)
-func (g *Grav) Serve(opts *TransportServeOpts) error {
-	if g.transport == nil {
-		return ErrTransportNotConfigured
-	}
-
-	return g.transport.Serve(opts)
 }

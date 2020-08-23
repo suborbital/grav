@@ -17,8 +17,8 @@ type Transport interface {
 	ConnectEndpoint(string, ConnectFunc) error
 }
 
-// DefaultTransportOpts returns the default Grav Transport options
-func DefaultTransportOpts() *TransportServeOpts {
+// DefaultTransportServeOpts returns the default Grav Transport options
+func DefaultTransportServeOpts() *TransportServeOpts {
 	to := &TransportServeOpts{
 		Port: 8080,
 	}

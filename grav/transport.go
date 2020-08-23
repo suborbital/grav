@@ -12,7 +12,7 @@ type TransportServeOpts struct {
 // Transport represents a Grav transport plugin
 type Transport interface {
 	// Serve is a transport-specific function that exposes a connection point
-	Serve(TransportServeOpts) error
+	Serve(*TransportServeOpts) error
 	// ConnectEndpoint indicates to the Transport that a connection to a remote endpoint is needed
 	ConnectEndpoint(string, ConnectFunc) error
 }

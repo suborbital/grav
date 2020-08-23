@@ -49,7 +49,7 @@ func (g *Grav) ConnectEndpoint(endpoint string) error {
 // Serve directs the configured transport plugin to serve an endpoint that other nodes can connect to
 // Calling Serve will block, so if the Grav endpoint is meant to run in the background, it should be called on
 // a goroutine. Calling Serve is optional if incoming connections are not needed (or if no transport is being used)
-func (g *Grav) Serve(opts TransportServeOpts) error {
+func (g *Grav) Serve(opts *TransportServeOpts) error {
 	if g.transport == nil {
 		return ErrTransportNotConfigured
 	}

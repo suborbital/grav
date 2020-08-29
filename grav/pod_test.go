@@ -327,3 +327,133 @@ func TestPodFlushFailed(t *testing.T) {
 		t.Errorf("incorrect number of messages, expected 20, got %d", count)
 	}
 }
+
+func TestPodReplay(t *testing.T) {
+	g := New()
+
+	counter := make(chan bool, 1000)
+
+	// create one pod that returns errors on "bad" messages
+	p1 := g.Connect()
+	p1.On(func(msg Message) error {
+		counter <- true
+		return nil
+	})
+
+	sender := g.Connect()
+
+	// send 100 messages and ensure they're received by p1
+	for i := 0; i < 100; i++ {
+		sender.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
+	}
+
+	time.Sleep(time.Duration(time.Second))
+
+	count := 0
+	more := true
+	for more {
+		select {
+		case <-counter:
+			count++
+		default:
+			more = false
+		}
+	}
+
+	if count != 100 {
+		t.Errorf("p1 did not receive 100 initial messages, got %d", count)
+	}
+
+	// connect a second pod with replay to ensure the same messages come through
+	p2 := g.ConnectWithReplay()
+	p2.On(func(msg Message) error {
+		counter <- true
+		return nil
+	})
+
+	sender.Send(NewMsg(MsgTypeDefault, []byte("let's get it started")))
+
+	time.Sleep(time.Duration(time.Second))
+
+	count = 0
+	more = true
+	for more {
+		select {
+		case <-counter:
+			count++
+		default:
+			more = false
+		}
+	}
+
+	// 102 because p1 and p2 each got the new message, and p2 replayed the original 100
+	if count != 102 {
+		t.Errorf("incorrect number of messages, expected 102, got %d", count)
+	}
+}
+
+func TestPodReplayPt2(t *testing.T) {
+	g := New()
+
+	counter := make(chan bool, 1000)
+
+	// create one pod that returns errors on "bad" messages
+	p1 := g.Connect()
+	p1.On(func(msg Message) error {
+		counter <- true
+		return nil
+	})
+
+	sender := g.Connect()
+
+	// send 100 messages and ensure they're received by p1
+	for i := 0; i < 1000; i++ {
+		j := i
+		sender.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", j))))
+	}
+
+	time.Sleep(time.Duration(time.Second))
+
+	count := 0
+	more := true
+	for more {
+		select {
+		case <-counter:
+			count++
+		default:
+			more = false
+		}
+	}
+
+	if count != 1000 {
+		t.Errorf("p1 did not receive 1000 initial messages, got %d", count)
+	}
+
+	// connect a second pod with replay to ensure the same messages come through
+	p2 := g.ConnectWithReplay()
+	p2.On(func(msg Message) error {
+		fmt.Println(string(msg.Data()))
+		counter <- true
+		return nil
+	})
+
+	sender.Send(NewMsg(MsgTypeDefault, []byte("let's get it started")))
+
+	time.Sleep(time.Duration(time.Second))
+
+	count = 0
+	more = true
+	for more {
+		select {
+		case <-counter:
+			count++
+		default:
+			more = false
+		}
+	}
+
+	// 130 because p1 and p2 each got the new message, and p2 replayed the 128 in the bus' buffer
+	if count != 130 {
+		t.Errorf("incorrect number of messages, expected 130, got %d", count)
+	}
+}

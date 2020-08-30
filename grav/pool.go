@@ -88,16 +88,16 @@ func (c *connectionPool) prepareNext(buffer *msgBuffer) error {
 			c.deleteNext()
 			return errors.New("deleting next podConnection")
 		}
-	} else {
-		if status.WantsReplay {
-			// if the pod has indicated that it wants a replay of recent messages, do so
-			c.replayNext(buffer)
-		} else {
-			// if the most recent error check comes back clean,
-			// then tell the connection to flush any failed messages
-			// this is a no-op if there are no failed messages queued
-			next.flushFailed()
-		}
+	} else if status.WantsReplay {
+		// if the pod has indicated that it wants a replay of recent messages, do so
+		c.replayNext(buffer)
+	}
+
+	if status.HadSuccess {
+		// if the most recent status check indicates there was a success,
+		// then tell the connection to flush any failed messages
+		// this is a no-op if there are no failed messages queued
+		next.flushFailed()
 	}
 
 	return nil
@@ -157,8 +157,9 @@ type podConnection struct {
 
 // connStatus is used to communicate the status of a podConnection back to the bus
 type connStatus struct {
-	Error       error
+	HadSuccess  bool
 	WantsReplay bool
+	Error       error
 }
 
 func newPodConnection(id int64, pod *Pod) *podConnection {
@@ -192,30 +193,24 @@ func (p *podConnection) send(msg Message) {
 // checkStatus checks the pod's feedback for any information or failed messages and drains the failures into the failed Message buffer
 func (p *podConnection) checkStatus() *connStatus {
 	status := &connStatus{
-		Error:       nil,
+		HadSuccess:  false,
 		WantsReplay: false,
+		Error:       nil,
 	}
 
 	done := false
 	for !done {
 		select {
 		case feedbackMsg := <-p.feedbackChan:
-			if feedbackMsg != nil {
-				if feedbackMsg == podFeedbackMsgReplay {
-					status.WantsReplay = true
-				} else {
-					p.failed = append(p.failed, feedbackMsg)
-					status.Error = errFailedMessage
-				}
+			if feedbackMsg == podFeedbackMsgSuccess {
+				status.HadSuccess = true
+			} else if feedbackMsg == podFeedbackMsgReplay {
+				status.WantsReplay = true
 			} else {
-				done = true
-			}
-		default:
-			// if there's no nil on the channel, then we don't know if there's any new successes
-			if len(p.failed) > 0 {
+				p.failed = append(p.failed, feedbackMsg)
 				status.Error = errFailedMessage
 			}
-
+		default:
 			done = true
 		}
 	}

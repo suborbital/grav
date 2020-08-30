@@ -12,7 +12,8 @@ const (
 
 var (
 	// podFeedbackMsgReplay is the message sent via feedback channel when message replay is desired
-	podFeedbackMsgReplay = NewMsg(msgTypePodFeedback, []byte{})
+	podFeedbackMsgReplay  = NewMsg(msgTypePodFeedback, []byte{})
+	podFeedbackMsgSuccess = NewMsg(msgTypePodFeedback, []byte{})
 )
 
 /**
@@ -162,21 +163,31 @@ func (p *Pod) busChans() (MsgChan, MsgChan) {
 func (p *Pod) start() {
 	go func() {
 		// this loop ends when the bus closes the messageChan
-		for msg := range p.messageChan {
-			p.RLock() // in case the onFunc gets replaced
-
-			// run the message through the filter before passing it to the onFunc
-			if p.onFunc != nil && p.allow(msg) {
-				if err := p.onFunc(msg); err != nil {
-					// if the onFunc failed, send it back to the bus to be re-sent later
-					p.feedbackChan <- msg
-				} else {
-					// if it was successful, a nil on the channel lets the conn know all is well
-					p.feedbackChan <- nil
-				}
+		for {
+			msg, ok := <-p.messageChan
+			if !ok {
+				break
 			}
 
-			p.RUnlock()
+			go func() {
+				p.RLock() // in case the onFunc gets replaced
+				defer p.RUnlock()
+
+				if p.onFunc == nil {
+					return
+				}
+
+				if p.allow(msg) {
+					if err := p.onFunc(msg); err != nil {
+						// if the onFunc failed, send it back to the bus to be re-sent later
+						p.feedbackChan <- msg
+					} else {
+						// if it was successful, a success message on the channel lets the conn know all is well
+						p.feedbackChan <- podFeedbackMsgSuccess
+					}
+				}
+			}()
+
 		}
 
 		// if we've gotten here, the podConnection was closed and we should no longer do anything

@@ -2,20 +2,20 @@ package grav
 
 import (
 	"fmt"
-	"sync"
 	"testing"
-	"time"
+
+	"github.com/suborbital/grav/testutil"
 )
 
 func TestGravSingle(t *testing.T) {
 	g := New()
 
-	count := 0
+	counter := testutil.NewAsyncCounter(5)
 
 	p1 := g.Connect()
 
 	p1.On(func(msg Message) error {
-		count++
+		counter.Count()
 
 		return nil
 	})
@@ -23,28 +23,21 @@ func TestGravSingle(t *testing.T) {
 	p2 := g.Connect()
 	p2.Send(NewMsg(MsgTypeDefault, []byte("hello, world")))
 
-	time.Sleep(time.Duration(time.Second))
-
-	if count != 1 {
-		t.Errorf("incorrect number of messages, expected 1, got %d", count)
+	if err := counter.Wait(1, 1); err != nil {
+		t.Error(err)
 	}
 }
 
 func TestGravSanity(t *testing.T) {
 	g := New()
 
-	lock := sync.Mutex{}
-	count := 0
+	counter := testutil.NewAsyncCounter(100)
 
 	for i := 0; i < 10; i++ {
 		p := g.Connect()
 
 		p.On(func(msg Message) error {
-			lock.Lock()
-			defer lock.Unlock()
-
-			count++
-
+			counter.Count()
 			return nil
 		})
 	}
@@ -55,53 +48,57 @@ func TestGravSanity(t *testing.T) {
 		pod.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
-	time.Sleep(time.Duration(time.Second))
-
-	if count != 100 {
-		t.Errorf("incorrect number of messages, expected 100, got %d", count)
+	if err := counter.Wait(100, 1); err != nil {
+		t.Error(err)
 	}
 }
 
 func TestGravBench(t *testing.T) {
 	g := New()
 
-	doneChan := make(chan bool)
-	lock := sync.Mutex{}
-	count := 0
+	counter := testutil.NewAsyncCounter(1500000)
 
 	for i := 0; i < 100000; i++ {
 		p := g.Connect()
 
 		p.On(func(msg Message) error {
-			lock.Lock()
-			defer lock.Unlock()
-
-			count++
-
-			if count == 1000000 {
-				doneChan <- true
-			} else if count > 1000000 {
-				t.Error("recieved more than 100 messages!")
-			}
-
+			counter.Count()
 			return nil
 		})
 	}
 
 	pod := g.Connect()
 
-	start := time.Now()
 	for i := 0; i < 10; i++ {
 		pod.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
-	<-doneChan
-	duration := time.Since(start).Seconds()
+	if err := counter.Wait(1000000, 3); err != nil {
+		t.Error(err)
+	}
+}
 
-	fmt.Println(duration, "seconds")
-	if duration > 2 {
-		t.Error("delivering 1M messages took too long!")
+func TestGravBenchPt2(t *testing.T) {
+	g := New()
+
+	counter := testutil.NewAsyncCounter(1500000)
+
+	for i := 0; i < 10; i++ {
+		p := g.Connect()
+
+		p.On(func(msg Message) error {
+			counter.Count()
+			return nil
+		})
 	}
 
-	time.Sleep(time.Duration(time.Second)) // let any errors filter in from above
+	pod := g.Connect()
+
+	for i := 0; i < 100000; i++ {
+		pod.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
+	}
+
+	if err := counter.Wait(1000000, 2); err != nil {
+		t.Error(err)
+	}
 }

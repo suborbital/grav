@@ -1,10 +1,10 @@
 package grav
 
 const (
-	defaultBusChanSize = 512
+	defaultBusChanSize = 256
 )
 
-// messageBus is responsible for emitting events among the connected pods
+// messageBus is responsible for emitting messages among the connected pods
 // and managing the failure cases for those pods
 type messageBus struct {
 	busChan MsgChan

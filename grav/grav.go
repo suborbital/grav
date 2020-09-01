@@ -38,11 +38,17 @@ func NewWithTransport(tspt Transport, opts *TransportOpts) *Grav {
 
 // Connect creates a new connection (pod) to the bus
 func (g *Grav) Connect() *Pod {
-	pod := newPod("", g.bus.busChan)
+	opts := &podOpts{WantsReplay: false}
 
-	g.bus.addPod(pod)
+	return g.connectWithOpts(opts)
+}
 
-	return pod
+// ConnectWithReplay creates a new connection (pod) to the bus
+// and replays recent messages when the pod sets its onFunc
+func (g *Grav) ConnectWithReplay() *Pod {
+	opts := &podOpts{WantsReplay: true}
+
+	return g.connectWithOpts(opts)
 }
 
 // ConnectEndpoint uses the configured transport to connect the bus to an external endpoint
@@ -52,4 +58,22 @@ func (g *Grav) ConnectEndpoint(endpoint string) error {
 	}
 
 	return g.transport.ConnectEndpoint(endpoint, g.Connect)
+}
+
+// ConnectEndpointWithReplay uses the configured transport to connect the bus to an external endpoint
+// and replays recent messages to the endpoint when the pod registers its onFunc
+func (g *Grav) ConnectEndpointWithReplay(endpoint string) error {
+	if g.transport == nil {
+		return ErrTransportNotConfigured
+	}
+
+	return g.transport.ConnectEndpoint(endpoint, g.ConnectWithReplay)
+}
+
+func (g *Grav) connectWithOpts(opts *podOpts) *Pod {
+	pod := newPod(g.bus.busChan, opts)
+
+	g.bus.addPod(pod)
+
+	return pod
 }

@@ -1,17 +1,23 @@
 package grav
 
-// messageBus is responsible for emitting events among the connected pods
+const (
+	defaultBusChanSize = 256
+)
+
+// messageBus is responsible for emitting messages among the connected pods
 // and managing the failure cases for those pods
 type messageBus struct {
 	busChan MsgChan
 	pool    *connectionPool
+	buffer  *msgBuffer
 }
 
 // newMessageBus creates a new messageBus
 func newMessageBus() *messageBus {
 	b := &messageBus{
-		busChan: make(chan Message, 256),
+		busChan: make(chan Message, defaultBusChanSize),
 		pool:    newConnectionPool(),
+		buffer:  newMsgBuffer(defaultBufferSize),
 	}
 
 	b.start()
@@ -33,8 +39,8 @@ func (b *messageBus) start() {
 		// ring, and repeat forever when each new message arrives
 		for msg := range b.busChan {
 			for {
-				// make sure the pod we start with is healthy
-				if err := b.pool.checkNextPod(); err == nil {
+				// make sure the next pod is ready for messages
+				if err := b.pool.prepareNext(b.buffer); err == nil {
 					break
 				}
 			}
@@ -42,6 +48,8 @@ func (b *messageBus) start() {
 			startingConn := b.pool.next()
 
 			b.traverse(msg, startingConn)
+
+			b.buffer.Push(msg)
 		}
 	}()
 }
@@ -55,7 +63,7 @@ func (b *messageBus) traverse(msg Message, start *podConnection) {
 		conn.send(msg)
 
 		next := b.pool.peek()
-		if err := b.pool.checkNextPod(); err != nil {
+		if err := b.pool.prepareNext(b.buffer); err != nil {
 			if startID == next.ID {
 				startID = next.next.ID
 			}

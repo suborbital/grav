@@ -4,22 +4,19 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/suborbital/grav/testutil"
 )
 
 func TestPodFilter(t *testing.T) {
 	g := New()
 
-	lock := sync.Mutex{}
-	count := 0
+	counter := testutil.NewAsyncCounter(100)
 
 	onFunc := func(msg Message) error {
-		lock.Lock()
-		defer lock.Unlock()
-
-		count++
+		counter.Count()
 
 		return nil
 	}
@@ -34,12 +31,10 @@ func TestPodFilter(t *testing.T) {
 		p1.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
-	time.Sleep(time.Duration(time.Second))
-
 	// only 10 should be tracked because p1 should have filtered out the messages that it sent
 	// and then they should not reach its own onFunc
-	if count != 10 {
-		t.Errorf("incorrect number of messages, expected 10, got %d", count)
+	if err := counter.Wait(10, 1); err != nil {
+		t.Error(err)
 	}
 }
 
@@ -85,12 +80,12 @@ const msgTypeBad = "test.bad"
 func TestPodFailure(t *testing.T) {
 	g := New()
 
-	counter := make(chan bool, 1000)
+	counter := testutil.NewAsyncCounter(200)
 
 	// create one pod that returns errors on "bad" messages
 	p := g.Connect()
 	p.On(func(msg Message) error {
-		counter <- true
+		counter.Count()
 
 		if msg.Type() == msgTypeBad {
 			return errors.New("bad message")
@@ -104,7 +99,7 @@ func TestPodFailure(t *testing.T) {
 		p2 := g.Connect()
 
 		p2.On(func(msg Message) error {
-			counter <- true
+			counter.Count()
 
 			return nil
 		})
@@ -117,32 +112,19 @@ func TestPodFailure(t *testing.T) {
 		pod.Send(NewMsg(msgTypeBad, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
-	time.Sleep(time.Duration(time.Second))
+	time.Sleep(time.Second)
 
 	// send 10 more "bad" messages
 	for i := 0; i < 10; i++ {
 		pod.Send(NewMsg(msgTypeBad, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
-	time.Sleep(time.Duration(time.Second))
-
-	count := 0
-	more := true
-	for more {
-		select {
-		case <-counter:
-			count++
-		default:
-			more = false
-		}
-	}
-
 	// 730 because the 64th message to the "bad" pod put it over the highwater
 	// mark and so the last 10 message would never be delievered
 	// sleeps were needed to allow all of the internal goroutines to finish execing
 	// in the worst case scenario of a single process machine (which lots of containers are)
-	if count != 730 {
-		t.Errorf("incorrect number of messages, expected 730, got %d", count)
+	if err := counter.Wait(730, 1); err != nil {
+		t.Error(err)
 	}
 
 	// the first pod should now have been disconnected, causing only 9 recievers reset and test again
@@ -152,36 +134,22 @@ func TestPodFailure(t *testing.T) {
 		pod.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
-	time.Sleep(time.Duration(time.Second))
-
-	count = 0
-	more = true
-	for more {
-		select {
-		case <-counter:
-			count++
-		default:
-			more = false
-		}
-	}
-
-	if count != 90 {
-		t.Errorf("incorrect number of messages, expected 90, got %d", count)
+	if err := counter.Wait(90, 1); err != nil {
+		t.Error(err)
 	}
 }
 
-func TestPodFailurePart2(t *testing.T) {
+func TestPodFailurePt2(t *testing.T) {
 	// test where the "bad" pod is somewhere in the "middle" of the ring
 	g := New()
 
-	counter := make(chan bool, 1000)
+	counter := testutil.NewAsyncCounter(200)
 
-	// and another 9 that don't
 	for i := 0; i < 4; i++ {
 		p2 := g.Connect()
 
 		p2.On(func(msg Message) error {
-			counter <- true
+			counter.Count()
 
 			return nil
 		})
@@ -190,7 +158,7 @@ func TestPodFailurePart2(t *testing.T) {
 	// create one pod that returns errors on "bad" messages
 	p := g.Connect()
 	p.On(func(msg Message) error {
-		counter <- true
+		counter.Count()
 
 		if msg.Type() == msgTypeBad {
 			return errors.New("bad message")
@@ -204,7 +172,7 @@ func TestPodFailurePart2(t *testing.T) {
 		p2 := g.Connect()
 
 		p2.On(func(msg Message) error {
-			counter <- true
+			counter.Count()
 
 			return nil
 		})
@@ -224,25 +192,12 @@ func TestPodFailurePart2(t *testing.T) {
 		pod.Send(NewMsg(msgTypeBad, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
-	time.Sleep(time.Duration(time.Second))
-
-	count := 0
-	more := true
-	for more {
-		select {
-		case <-counter:
-			count++
-		default:
-			more = false
-		}
-	}
-
 	// 730 because the 64th message to the "bad" pod put it over the highwater
 	// mark and so the last 10 message would never be delievered
 	// sleeps were needed to allow all of the internal goroutines to finish execing
 	// in the worst case scenario of a single process machine (which lots of containers are)
-	if count != 730 {
-		t.Errorf("incorrect number of messages, expected 730, got %d", count)
+	if err := counter.Wait(730, 1); err != nil {
+		t.Error(err)
 	}
 
 	// the first pod should now have been disconnected, causing only 9 recievers reset and test again
@@ -252,33 +207,20 @@ func TestPodFailurePart2(t *testing.T) {
 		pod.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
-	time.Sleep(time.Duration(time.Second))
-
-	count = 0
-	more = true
-	for more {
-		select {
-		case <-counter:
-			count++
-		default:
-			more = false
-		}
-	}
-
-	if count != 90 {
-		t.Errorf("incorrect number of messages, expected 90, got %d", count)
+	if err := counter.Wait(90, 1); err != nil {
+		t.Error(err)
 	}
 }
 
 func TestPodFlushFailed(t *testing.T) {
 	g := New()
 
-	counter := make(chan bool, 100)
+	counter := testutil.NewAsyncCounter(200)
 
 	// create a pod that returns errors on "bad" messages
 	p := g.Connect()
 	p.On(func(msg Message) error {
-		counter <- true
+		counter.Count()
 
 		if msg.Type() == msgTypeBad {
 			return errors.New("bad message")
@@ -287,43 +229,108 @@ func TestPodFlushFailed(t *testing.T) {
 		return nil
 	})
 
-	pod := g.Connect()
+	sender := g.Connect()
 
 	// send 5 "bad" messages
 	for i := 0; i < 5; i++ {
-		pod.Send(NewMsg(msgTypeBad, []byte(fmt.Sprintf("hello, world %d", i))))
+		sender.Send(NewMsg(msgTypeBad, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
-	time.Sleep(time.Duration(time.Second))
+	<-time.After(time.Duration(time.Second))
 
 	// replace the OnFunc to not error when the flushed messages come back through
 	p.On(func(msg Message) error {
-		counter <- true
+		counter.Count()
 
 		return nil
 	})
 
 	// send 10 "normal" messages
-	for i := 0; i < 10; i++ {
-		pod.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
+	for i := 0; i < 9; i++ {
+		sender.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
 	}
 
-	time.Sleep(time.Duration(time.Second))
+	<-time.After(time.Duration(time.Second))
 
-	count := 0
-	more := true
-	for more {
-		select {
-		case <-counter:
-			count++
-		default:
-			more = false
-		}
-	}
+	// yes this is stupid, but on single-CPU machines (such as GitHub actions), this test won't allow things to be flushed properly.
+	sender.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("flushing!"))))
 
 	// 20 because upon handling the first "good" message, the bus should flush
 	// the 5 "failed" messages back into the connection thus repeating them
-	if count != 20 {
-		t.Errorf("incorrect number of messages, expected 20, got %d", count)
+	if err := counter.Wait(20, 1); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestPodReplay(t *testing.T) {
+	g := New()
+
+	counter := testutil.NewAsyncCounter(500)
+
+	// create one pod that returns errors on "bad" messages
+	p1 := g.Connect()
+	p1.On(func(msg Message) error {
+		counter.Count()
+		return nil
+	})
+
+	sender := g.Connect()
+
+	// send 100 messages and ensure they're received by p1
+	for i := 0; i < 100; i++ {
+		sender.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
+	}
+
+	if err := counter.Wait(100, 1); err != nil {
+		t.Error(err)
+	}
+
+	// connect a second pod with replay to ensure the same messages come through
+	p2 := g.ConnectWithReplay()
+	p2.On(func(msg Message) error {
+		counter.Count()
+		return nil
+	})
+
+	sender.Send(NewMsg(MsgTypeDefault, []byte("let's get it started")))
+
+	if err := counter.Wait(102, 1); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestPodReplayPt2(t *testing.T) {
+	g := New()
+
+	counter := testutil.NewAsyncCounter(2000)
+
+	p1 := g.Connect()
+	p1.On(func(msg Message) error {
+		counter.Count()
+		return nil
+	})
+
+	sender := g.Connect()
+
+	// send 1000 messages and ensure they're received by p1
+	for i := 0; i < 1000; i++ {
+		sender.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
+	}
+
+	if err := counter.Wait(1000, 1); err != nil {
+		t.Error(err)
+	}
+
+	// connect a second pod with replay to ensure the same messages come through
+	p2 := g.ConnectWithReplay()
+	p2.On(func(msg Message) error {
+		counter.Count()
+		return nil
+	})
+
+	sender.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("let's get started"))))
+
+	if err := counter.Wait(130, 1); err != nil {
+		t.Error(err)
 	}
 }

@@ -11,7 +11,8 @@ import (
 
 // MsgTypeDefault and other represent message consts
 const (
-	MsgTypeDefault string = "grav.default"
+	MsgTypeDefault     string = "grav.default"
+	msgTypePodFeedback string = "grav.feedback"
 )
 
 // MsgFunc is a callback function that accepts a message and returns an error

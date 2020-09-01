@@ -6,7 +6,14 @@ import (
 )
 
 const (
+	// defaultPodChanSize is the default size of the channels used for pod - bus communication
 	defaultPodChanSize = 128
+)
+
+var (
+	// podFeedbackMsgReplay is the message sent via feedback channel when message replay is desired
+	podFeedbackMsgReplay  = NewMsg(msgTypePodFeedback, []byte{})
+	podFeedbackMsgSuccess = NewMsg(msgTypePodFeedback, []byte{})
 )
 
 /**
@@ -31,23 +38,30 @@ Created with Monodraw
 type Pod struct {
 	onFunc MsgFunc // the onFunc is called whenever a message is recieved
 
-	messageChan MsgChan // messageChan is used to recieve messages coming from the bus
-	errorChan   MsgChan // errorChan is used to send failed messages back to the bus
-	busChan     MsgChan // busChan is used to emit messages to the bus
+	messageChan  MsgChan // messageChan is used to recieve messages coming from the bus
+	feedbackChan MsgChan // feedbackChan is used to send "feedback" to the bus about the pod's status
+	busChan      MsgChan // busChan is used to emit messages to the bus
 
 	*messageFilter // the embedded messageFilter controls which messages reach the onFunc
+
+	opts *podOpts
 
 	dead bool
 	sync.RWMutex
 }
 
+type podOpts struct {
+	WantsReplay bool
+}
+
 // newPod creates a new Pod
-func newPod(group string, busChan MsgChan) *Pod {
+func newPod(busChan MsgChan, opts *podOpts) *Pod {
 	p := &Pod{
 		messageChan:   make(chan Message, defaultPodChanSize),
-		errorChan:     make(chan Message, defaultPodChanSize),
+		feedbackChan:  make(chan Message, defaultPodChanSize),
 		busChan:       busChan,
 		messageFilter: newMessageFilter(),
+		opts:          opts,
 		dead:          false,
 		RWMutex:       sync.RWMutex{},
 	}
@@ -66,7 +80,7 @@ func (p *Pod) On(onFunc MsgFunc) {
 	// reset the message filter when the onFunc is changed
 	p.messageFilter = newMessageFilter()
 
-	p.onFunc = onFunc
+	p.setOnFunc(onFunc)
 }
 
 // OnType sets the function to be called whenever this pod recieves a message and sets the pod's filter to only include certain message types
@@ -82,7 +96,7 @@ func (p *Pod) OnType(onFunc MsgFunc, msgTypes ...string) {
 		p.FilterType(t, true)
 	}
 
-	p.onFunc = onFunc
+	p.setOnFunc(onFunc)
 }
 
 // ErrMsgNotWanted is used by WaitOn to determine if the current message is what's being waited on
@@ -96,13 +110,13 @@ func (p *Pod) WaitOn(onFunc MsgFunc) error {
 	p.Lock()
 	errChan := make(chan error)
 
-	p.onFunc = func(msg Message) error {
+	p.setOnFunc(func(msg Message) error {
 		if err := onFunc(msg); err != ErrMsgNotWanted {
 			errChan <- err
 		}
 
 		return nil
-	}
+	})
 	p.Unlock() // can't stay locked here or the onFunc will never be called
 
 	err := <-errChan
@@ -110,7 +124,7 @@ func (p *Pod) WaitOn(onFunc MsgFunc) error {
 	p.Lock()
 	defer p.Unlock()
 
-	p.onFunc = nil
+	p.setOnFunc(nil)
 
 	return err
 }
@@ -124,36 +138,56 @@ func (p *Pod) Send(msg Message) {
 		return
 	}
 
-	go func() {
-		p.FilterUUID(msg.UUID(), false) // don't allow the same message to bounce back through this pod
+	p.FilterUUID(msg.UUID(), false) // don't allow the same message to bounce back through this pod
 
-		p.busChan <- msg
-	}()
+	p.busChan <- msg
 }
 
-// busChans returns the messageChan and errorChan to be used by the bus
+// setOnFunc sets the OnFunc. THIS DOES NOT LOCK. THE CALLER MUST LOCK.
+func (p *Pod) setOnFunc(on MsgFunc) {
+	p.onFunc = on
+
+	if on != nil {
+		if p.opts.WantsReplay {
+			p.feedbackChan <- podFeedbackMsgReplay
+			p.opts.WantsReplay = false
+		}
+	}
+}
+
+// busChans returns the messageChan and feedbackChan to be used by the bus
 func (p *Pod) busChans() (MsgChan, MsgChan) {
-	return p.messageChan, p.errorChan
+	return p.messageChan, p.feedbackChan
 }
 
 func (p *Pod) start() {
 	go func() {
 		// this loop ends when the bus closes the messageChan
-		for msg := range p.messageChan {
-			p.RLock() // in case the onFunc gets replaced
-
-			// run the message through the filter before passing it to the onFunc
-			if p.onFunc != nil && p.allow(msg) {
-				if err := p.onFunc(msg); err != nil {
-					// if the onFunc failed, send it back to the bus to be re-sent later
-					p.errorChan <- msg
-				} else {
-					// if it was successful, a nil on the channel lets the conn know all is well
-					p.errorChan <- nil
-				}
+		for {
+			msg, ok := <-p.messageChan
+			if !ok {
+				break
 			}
 
-			p.RUnlock()
+			go func() {
+				p.RLock() // in case the onFunc gets replaced
+				defer p.RUnlock()
+
+				if p.onFunc == nil {
+					return
+				}
+
+				if p.allow(msg) {
+					if err := p.onFunc(msg); err != nil {
+						// if the onFunc failed, send it back to the bus to be re-sent later
+						p.feedbackChan <- msg
+					} else {
+						// if it was successful, a success message on the channel lets the conn know all is well
+						p.feedbackChan <- podFeedbackMsgSuccess
+					}
+				}
+			}()
+
 		}
 
 		// if we've gotten here, the podConnection was closed and we should no longer do anything

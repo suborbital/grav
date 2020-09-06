@@ -3,6 +3,7 @@ package grav
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -36,7 +37,8 @@ Created with Monodraw
 // and immediately route a message between its owner and the Bus. The Bus is responsible for any "smarts".
 // Messages coming from the bus are filtered using the pod's messageFilter, which is configurable by the caller.
 type Pod struct {
-	onFunc MsgFunc // the onFunc is called whenever a message is recieved
+	onFunc     MsgFunc // the onFunc is called whenever a message is recieved
+	onFuncLock sync.RWMutex
 
 	messageChan  MsgChan // messageChan is used to recieve messages coming from the bus
 	feedbackChan MsgChan // feedbackChan is used to send "feedback" to the bus about the pod's status
@@ -46,25 +48,29 @@ type Pod struct {
 
 	opts *podOpts
 
-	dead bool
-	sync.RWMutex
+	dead *atomic.Value
 }
 
 type podOpts struct {
 	WantsReplay bool
+	replayOnce  sync.Once
 }
 
 // newPod creates a new Pod
 func newPod(busChan MsgChan, opts *podOpts) *Pod {
 	p := &Pod{
+		onFuncLock:    sync.RWMutex{},
 		messageChan:   make(chan Message, defaultPodChanSize),
 		feedbackChan:  make(chan Message, defaultPodChanSize),
 		busChan:       busChan,
 		messageFilter: newMessageFilter(),
 		opts:          opts,
-		dead:          false,
-		RWMutex:       sync.RWMutex{},
+		dead:          &atomic.Value{},
 	}
+
+	// do some "delayed setup"
+	p.opts.replayOnce = sync.Once{}
+	p.dead.Store(false)
 
 	p.start()
 
@@ -74,8 +80,8 @@ func newPod(busChan MsgChan, opts *podOpts) *Pod {
 // On sets the function to be called whenever this pod recieves a message from the bus. If nil is passed, the pod will ignore all messages.
 // Calling On multiple times causes the function to be overwritten. To recieve using two different functions, create two pods.
 func (p *Pod) On(onFunc MsgFunc) {
-	p.Lock()
-	defer p.Unlock()
+	p.onFuncLock.Lock()
+	defer p.onFuncLock.Unlock()
 
 	// reset the message filter when the onFunc is changed
 	p.messageFilter = newMessageFilter()
@@ -85,8 +91,8 @@ func (p *Pod) On(onFunc MsgFunc) {
 
 // OnType sets the function to be called whenever this pod recieves a message and sets the pod's filter to only include certain message types
 func (p *Pod) OnType(onFunc MsgFunc, msgTypes ...string) {
-	p.Lock()
-	defer p.Unlock()
+	p.onFuncLock.Lock()
+	defer p.onFuncLock.Unlock()
 
 	// reset the message filter when the onFunc is changed
 	p.messageFilter = newMessageFilter()
@@ -107,7 +113,7 @@ var ErrMsgNotWanted = errors.New("message not wanted")
 // When the onFunc returns something other than ErrMsgNotWanted (such as nil or a different error), WaitOn will return and set
 // the onFunc to nil. If an error other than ErrMsgNotWanted is returned from the onFunc, it will be propogated to the caller.
 func (p *Pod) WaitOn(onFunc MsgFunc) error {
-	p.Lock()
+	p.onFuncLock.Lock()
 	errChan := make(chan error)
 
 	p.setOnFunc(func(msg Message) error {
@@ -117,12 +123,13 @@ func (p *Pod) WaitOn(onFunc MsgFunc) error {
 
 		return nil
 	})
-	p.Unlock() // can't stay locked here or the onFunc will never be called
+
+	p.onFuncLock.Unlock() // can't stay locked here or the onFunc will never be called
 
 	err := <-errChan
 
-	p.Lock()
-	defer p.Unlock()
+	p.onFuncLock.Lock()
+	defer p.onFuncLock.Unlock()
 
 	p.setOnFunc(nil)
 
@@ -131,10 +138,8 @@ func (p *Pod) WaitOn(onFunc MsgFunc) error {
 
 // Send emits a message to be routed to the bus
 func (p *Pod) Send(msg Message) {
-	p.RLock()
-	defer p.RUnlock()
-
-	if p.dead {
+	// check to see if the pod has died (aka disconnected)
+	if p.dead.Load().(bool) == true {
 		return
 	}
 
@@ -148,10 +153,11 @@ func (p *Pod) setOnFunc(on MsgFunc) {
 	p.onFunc = on
 
 	if on != nil {
-		if p.opts.WantsReplay {
-			p.feedbackChan <- podFeedbackMsgReplay
-			p.opts.WantsReplay = false
-		}
+		p.opts.replayOnce.Do(func() {
+			if p.opts.WantsReplay {
+				p.feedbackChan <- podFeedbackMsgReplay
+			}
+		})
 	}
 }
 
@@ -170,8 +176,8 @@ func (p *Pod) start() {
 			}
 
 			go func() {
-				p.RLock() // in case the onFunc gets replaced
-				defer p.RUnlock()
+				p.onFuncLock.RLock() // in case the onFunc gets replaced
+				defer p.onFuncLock.RUnlock()
 
 				if p.onFunc == nil {
 					return
@@ -187,13 +193,9 @@ func (p *Pod) start() {
 					}
 				}
 			}()
-
 		}
 
-		// if we've gotten here, the podConnection was closed and we should no longer do anything
-		p.Lock()
-		defer p.Unlock()
-
-		p.dead = true
+		// if we've gotten this far, it means the pod has been killed and should not be allowed to send
+		p.dead.Store(true)
 	}()
 }

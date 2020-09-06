@@ -15,7 +15,7 @@ type messageFilter struct {
 	TypeMap       map[string]bool
 	TypeInclusive bool
 
-	sync.RWMutex
+	lock sync.RWMutex
 }
 
 func newMessageFilter() *messageFilter {
@@ -24,15 +24,15 @@ func newMessageFilter() *messageFilter {
 		UUIDInclusive: true,
 		TypeMap:       map[string]bool{},
 		TypeInclusive: true,
-		RWMutex:       sync.RWMutex{},
+		lock:          sync.RWMutex{},
 	}
 
 	return mf
 }
 
 func (mf *messageFilter) allow(msg Message) bool {
-	mf.RLock()
-	defer mf.RUnlock()
+	mf.lock.RLock()
+	defer mf.lock.RUnlock()
 
 	// for each map, deny the message if:
 	//	- a filter entry exists and it's value is false
@@ -57,15 +57,15 @@ func (mf *messageFilter) allow(msg Message) bool {
 
 // FilterUUID likely should not be used in normal cases, it adds a message UUID to the pod's filter.
 func (mf *messageFilter) FilterUUID(uuid string, allow bool) {
-	mf.Lock()
-	defer mf.Unlock()
+	mf.lock.Lock()
+	defer mf.lock.Unlock()
 
 	mf.UUIDMap[uuid] = allow
 }
 
 func (mf *messageFilter) FilterType(msgType string, allow bool) {
-	mf.Lock()
-	defer mf.Unlock()
+	mf.lock.Lock()
+	defer mf.lock.Unlock()
 
 	mf.TypeMap[msgType] = allow
 }

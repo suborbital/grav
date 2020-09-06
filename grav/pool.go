@@ -3,6 +3,7 @@ package grav
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -124,8 +125,8 @@ func (c *connectionPool) deleteNext() {
 
 	next := c.current.next
 
-	// lock the deadlock so any straggling send()s block forever
-	next.deadLock.Lock()
+	// indicate the conn is dead so future attempts to send are abandonded
+	next.dead.Store(true)
 
 	// close the messageChan so the pod can know it's been cut off
 	close(next.messageChan)
@@ -144,15 +145,15 @@ func (c *connectionPool) deleteNext() {
 // that is meant to be iterated around and inserted into/removed from
 // forever as the bus sends events to the registered pods
 type podConnection struct {
-	ID           int64
+	ID   int64
+	next *podConnection
+
 	messageChan  MsgChan
 	feedbackChan MsgChan
 
 	failed []Message
 
-	deadLock sync.RWMutex
-
-	next *podConnection
+	dead *atomic.Value
 }
 
 // connStatus is used to communicate the status of a podConnection back to the bus
@@ -170,9 +171,11 @@ func newPodConnection(id int64, pod *Pod) *podConnection {
 		messageChan:  msgChan,
 		feedbackChan: feedbackChan,
 		failed:       []Message{},
-		deadLock:     sync.RWMutex{},
+		dead:         &atomic.Value{},
 		next:         nil,
 	}
+
+	p.dead.Store(false)
 
 	return p
 }
@@ -182,9 +185,10 @@ func newPodConnection(id int64, pod *Pod) *podConnection {
 // is sacrificed to ensure that the bus does not block because of a delinquient pod
 func (p *podConnection) send(msg Message) {
 	go func() {
-		// get read-lock to ensure we're not dead
-		p.deadLock.RLock()
-		defer p.deadLock.RUnlock()
+		// if the conn is dead, abandon the attempt
+		if p.dead.Load().(bool) == true {
+			return
+		}
 
 		p.messageChan <- msg
 	}()

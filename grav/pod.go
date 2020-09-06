@@ -48,7 +48,7 @@ type Pod struct {
 
 	opts *podOpts
 
-	dead atomic.Value
+	dead *atomic.Value
 }
 
 type podOpts struct {
@@ -65,7 +65,7 @@ func newPod(busChan MsgChan, opts *podOpts) *Pod {
 		busChan:       busChan,
 		messageFilter: newMessageFilter(),
 		opts:          opts,
-		dead:          atomic.Value{},
+		dead:          &atomic.Value{},
 	}
 
 	// do some "delayed setup"

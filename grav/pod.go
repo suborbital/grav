@@ -77,6 +77,34 @@ func newPod(busChan MsgChan, opts *podOpts) *Pod {
 	return p
 }
 
+// Send emits a message to be routed to the bus
+func (p *Pod) Send(msg Message) {
+	// check to see if the pod has died (aka disconnected)
+	if p.dead.Load().(bool) == true {
+		return
+	}
+
+	p.FilterUUID(msg.UUID(), false) // don't allow the same message to bounce back through this pod
+
+	p.busChan <- msg
+}
+
+// ReplyTo sends a response to a message
+func (p *Pod) ReplyTo(ticket MessageTicket, msg Message) {
+	msg.SetReplyTo(ticket.UUID)
+
+	p.Send(msg)
+}
+
+// SendAndWaitOnReply sends a message and then blocks until a message is recieved in ReplyTo that message
+func (p *Pod) SendAndWaitOnReply(msg Message, onFunc MsgFunc) error {
+	ticket := msg.Ticket()
+
+	p.Send(msg)
+
+	return p.WaitOnReply(ticket, onFunc)
+}
+
 // On sets the function to be called whenever this pod recieves a message from the bus. If nil is passed, the pod will ignore all messages.
 // Calling On multiple times causes the function to be overwritten. To recieve using two different functions, create two pods.
 func (p *Pod) On(onFunc MsgFunc) {
@@ -136,16 +164,22 @@ func (p *Pod) WaitOn(onFunc MsgFunc) error {
 	return err
 }
 
-// Send emits a message to be routed to the bus
-func (p *Pod) Send(msg Message) {
-	// check to see if the pod has died (aka disconnected)
-	if p.dead.Load().(bool) == true {
-		return
-	}
+// WaitOnReply waits on a reply message to arrive at the pod and then calls onFunc with that message.
+// If the onFunc produces an error, it will be propogated to the caller.
+func (p *Pod) WaitOnReply(ticket MessageTicket, onFunc MsgFunc) error {
+	var reply Message
 
-	p.FilterUUID(msg.UUID(), false) // don't allow the same message to bounce back through this pod
+	p.WaitOn(func(msg Message) error {
+		if msg.ReplyTo() != ticket.UUID {
+			return ErrMsgNotWanted
+		}
 
-	p.busChan <- msg
+		reply = msg
+
+		return nil
+	})
+
+	return onFunc(reply)
 }
 
 // setOnFunc sets the OnFunc. THIS DOES NOT LOCK. THE CALLER MUST LOCK.

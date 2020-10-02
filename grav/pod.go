@@ -159,7 +159,7 @@ func (p *Pod) WaitOn(onFunc MsgFunc, timeoutSeconds ...int) error {
 
 	p.onFuncLock.Unlock() // can't stay locked here or the onFunc will never be called
 
-	timeout := 10
+	timeout := 3
 	if timeoutSeconds != nil {
 		timeout = timeoutSeconds[0]
 	}

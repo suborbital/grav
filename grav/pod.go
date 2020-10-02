@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -77,6 +78,34 @@ func newPod(busChan MsgChan, opts *podOpts) *Pod {
 	return p
 }
 
+// Send emits a message to be routed to the bus
+func (p *Pod) Send(msg Message) {
+	// check to see if the pod has died (aka disconnected)
+	if p.dead.Load().(bool) == true {
+		return
+	}
+
+	p.FilterUUID(msg.UUID(), false) // don't allow the same message to bounce back through this pod
+
+	p.busChan <- msg
+}
+
+// ReplyTo sends a response to a message
+func (p *Pod) ReplyTo(ticket MessageTicket, msg Message) {
+	msg.SetReplyTo(ticket.UUID)
+
+	p.Send(msg)
+}
+
+// SendAndWaitOnReply sends a message and then blocks until a message is recieved in ReplyTo that message
+func (p *Pod) SendAndWaitOnReply(msg Message, onFunc MsgFunc, timeoutSeconds ...int) error {
+	ticket := msg.Ticket()
+
+	p.Send(msg)
+
+	return p.WaitOnReply(ticket, onFunc, timeoutSeconds...)
+}
+
 // On sets the function to be called whenever this pod recieves a message from the bus. If nil is passed, the pod will ignore all messages.
 // Calling On multiple times causes the function to be overwritten. To recieve using two different functions, create two pods.
 func (p *Pod) On(onFunc MsgFunc) {
@@ -108,11 +137,15 @@ func (p *Pod) OnType(onFunc MsgFunc, msgTypes ...string) {
 // ErrMsgNotWanted is used by WaitOn to determine if the current message is what's being waited on
 var ErrMsgNotWanted = errors.New("message not wanted")
 
+// ErrWaitTimeout is returned if a timeout is exceeded
+var ErrWaitTimeout = errors.New("waited past timeout")
+
 // WaitOn takes a function to be called whenever this pod recieves a message and blocks until that function returns
 // something other than ErrMsgNotWanted. WaitOn should be used if there is a need to wait for a particular message.
 // When the onFunc returns something other than ErrMsgNotWanted (such as nil or a different error), WaitOn will return and set
 // the onFunc to nil. If an error other than ErrMsgNotWanted is returned from the onFunc, it will be propogated to the caller.
-func (p *Pod) WaitOn(onFunc MsgFunc) error {
+// An optional timeout (default 10s) can be provided (only the first value will be used). If the timeout is exceeded, ErrWaitTimeout is returned.
+func (p *Pod) WaitOn(onFunc MsgFunc, timeoutSeconds ...int) error {
 	p.onFuncLock.Lock()
 	errChan := make(chan error)
 
@@ -126,26 +159,47 @@ func (p *Pod) WaitOn(onFunc MsgFunc) error {
 
 	p.onFuncLock.Unlock() // can't stay locked here or the onFunc will never be called
 
-	err := <-errChan
+	timeout := 3
+	if timeoutSeconds != nil {
+		timeout = timeoutSeconds[0]
+	}
+
+	var onFuncErr error
+
+	select {
+	case err := <-errChan:
+		onFuncErr = err
+	case <-time.After(time.Second * time.Duration(timeout)):
+		onFuncErr = ErrWaitTimeout
+	}
 
 	p.onFuncLock.Lock()
 	defer p.onFuncLock.Unlock()
 
 	p.setOnFunc(nil)
 
-	return err
+	return onFuncErr
 }
 
-// Send emits a message to be routed to the bus
-func (p *Pod) Send(msg Message) {
-	// check to see if the pod has died (aka disconnected)
-	if p.dead.Load().(bool) == true {
-		return
+// WaitOnReply waits on a reply message to arrive at the pod and then calls onFunc with that message.
+// If the onFunc produces an error, it will be propogated to the caller.
+// an optionsl timrout can be provided (only the first value will be used)
+func (p *Pod) WaitOnReply(ticket MessageTicket, onFunc MsgFunc, timeoutSeconds ...int) error {
+	var reply Message
+
+	if err := p.WaitOn(func(msg Message) error {
+		if msg.ReplyTo() != ticket.UUID {
+			return ErrMsgNotWanted
+		}
+
+		reply = msg
+
+		return nil
+	}, timeoutSeconds...); err != nil {
+		return err
 	}
 
-	p.FilterUUID(msg.UUID(), false) // don't allow the same message to bounce back through this pod
-
-	p.busChan <- msg
+	return onFunc(reply)
 }
 
 // setOnFunc sets the OnFunc. THIS DOES NOT LOCK. THE CALLER MUST LOCK.

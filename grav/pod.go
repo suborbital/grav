@@ -187,7 +187,7 @@ func (p *Pod) WaitOn(onFunc MsgFunc, timeoutSeconds ...int) error {
 func (p *Pod) WaitOnReply(ticket MessageTicket, onFunc MsgFunc, timeoutSeconds ...int) error {
 	var reply Message
 
-	p.WaitOn(func(msg Message) error {
+	if err := p.WaitOn(func(msg Message) error {
 		if msg.ReplyTo() != ticket.UUID {
 			return ErrMsgNotWanted
 		}
@@ -195,7 +195,9 @@ func (p *Pod) WaitOnReply(ticket MessageTicket, onFunc MsgFunc, timeoutSeconds .
 		reply = msg
 
 		return nil
-	}, timeoutSeconds...)
+	}, timeoutSeconds...); err != nil {
+		return err
+	}
 
 	return onFunc(reply)
 }

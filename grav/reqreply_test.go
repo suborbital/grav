@@ -65,3 +65,21 @@ func TestRequestReplySugar(t *testing.T) {
 
 	counter.Wait(1, 1)
 }
+
+func TestRequestReplyTimeout(t *testing.T) {
+	g := New()
+	p1 := g.Connect()
+
+	counter := testutil.NewAsyncCounter(10)
+
+	go func() {
+		msg := NewMsg(MsgTypeDefault, []byte("joey"))
+		if err := p1.SendAndWaitOnReply(msg, func(msg Message) error {
+			return nil
+		}, 1); err == ErrWaitTimeout {
+			counter.Count()
+		}
+	}()
+
+	counter.Wait(1, 2)
+}

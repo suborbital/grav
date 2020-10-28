@@ -15,7 +15,7 @@ import (
 
 var upgrader = websocket.Upgrader{}
 
-// GravTransportWebsocket is an HTTP handler manager that pushes messages into a bus
+// GravTransportWebsocket is a websocket manager that connects Grav nodes via standard websockets
 type GravTransportWebsocket struct {
 	pod         *grav.Pod
 	connections map[string]*websocket.Conn
@@ -25,7 +25,7 @@ type GravTransportWebsocket struct {
 	sync.RWMutex
 }
 
-// New creates a new http transport
+// New creates a new websocket transport
 func New(opts *grav.TransportOpts) *GravTransportWebsocket {
 	g := &GravTransportWebsocket{
 		pod:         nil, // will be provided upon call to Serve
@@ -51,7 +51,7 @@ func (g *GravTransportWebsocket) Serve(pod *grav.Pod) error {
 	return nil
 }
 
-// ConnectEndpoint adds an HTTP/S endpoint to emit messages to
+// ConnectEndpoint adds a websocket endpoint to emit messages to
 func (g *GravTransportWebsocket) ConnectEndpoint(endpoint string, connect grav.ConnectFunc) error {
 	g.Lock()
 	defer g.Unlock()

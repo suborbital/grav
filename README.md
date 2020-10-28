@@ -7,7 +7,7 @@ Goals:
 - Be resilient against data loss due to node failure.
 - Act as a reliable core upon which more complex behaviour can be built.
 - Define a minimal data format that is meant to be extended for a particular purpose.
-- Support request/reply and pub/sub message patterns.
+- Support request/reply and broadcast message patterns.
 - Support internal (in-process) and external (networked, via transport plugins) publishers and consumers equally.
 
 Non-Goals:
@@ -23,9 +23,16 @@ In a search for the right messaging system to use in concert with Hive and Vekto
 
 Grav is an embedded message bus, meaning that it is instantiated as a `grav.Grav` object which your application code connects to in order to send and recieve messages. Grav connects to other nodes via transport plugins such as [grav-transport-http](https://github.com/suborbital/grav-transport-http) which extends the Grav core to become a networked distributed messaging system. Grav does not require a centralized broker, and as such has some limitations, but for certain applications it is vastly simpler (and more extensible) than a centralized messaging system.
 
+## Transports
+Grav has two "first-party" transports:
+- gravhttp, a simplistic transport using HTTP requests to emit messages. [Read more here](./transport/gravhttp/README.md)
+- gravwebsocket, a streaming transport based on standard websockets. [Read more here](./transport/gravwebsocket/README.md)
+
+Grav transports are designed as plugins, and as such anyone can create one for their own purposes. Transports for various popular products such as NATS and Kafka are planned. See the [transport](./transport) directory to see example transport code.
+
 ## Project status
 
-Grav is currently in prototype stages and is being developed alongside (and is designed to integrate with) [Vektor](https://github.com/suborbital/vektor) and [Hive](https://github.com/suborbital/hive), who are nearing their own beta status.
+Grav is currently in beta, and is being developed alongside (and is designed to integrate with) [Vektor](https://github.com/suborbital/vektor) and [Hive](https://github.com/suborbital/hive).
 
 Documentation will be coming soon.
 

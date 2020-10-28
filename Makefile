@@ -8,6 +8,12 @@ transport/http:
 transport/http/%:
 	@$(MAKE) --no-print-directory -C transport/gravhttp $@
 
+transport/websocket:
+	@$(MAKE) --no-print-directory -C transport/gravwebsocket $@
+
+transport/websocket/%:
+	@$(MAKE) --no-print-directory -C transport/gravwebsocket $@
+
 deps:
 	go get -u -d ./...
 

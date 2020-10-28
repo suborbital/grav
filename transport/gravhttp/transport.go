@@ -23,13 +23,8 @@ type GravTransportHTTP struct {
 	sync.RWMutex
 }
 
-// Options are grav-http specific options
-type Options struct {
-	Logger *vlog.Logger
-}
-
 // New creates a new http transport
-func New(opts *Options) *GravTransportHTTP {
+func New(opts *grav.TransportOpts) *GravTransportHTTP {
 	g := &GravTransportHTTP{
 		pod:       nil, // will be provided upon call to Serve
 		endpoints: []url.URL{},
@@ -41,7 +36,7 @@ func New(opts *Options) *GravTransportHTTP {
 }
 
 // Serve creates a request server to handle incoming messages (not yet implemented)
-func (g *GravTransportHTTP) Serve(opts *grav.TransportOpts, pod *grav.Pod) error {
+func (g *GravTransportHTTP) Serve(pod *grav.Pod) error {
 	// serving independently is not yet supported, use the handler func methods
 	g.Lock()
 	defer g.Unlock()
@@ -141,13 +136,4 @@ func (g *GravTransportHTTP) messageHandler() grav.MsgFunc {
 
 		return nil
 	}
-}
-
-// DefaultOptions returns the default options
-func DefaultOptions() *Options {
-	o := &Options{
-		Logger: vlog.Default(),
-	}
-
-	return o
 }

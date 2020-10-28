@@ -7,7 +7,7 @@ import (
 
 func main() {
 	ghttp := gravhttp.New(grav.DefaultTransportOpts())
-	g := grav.NewWithTransport(ghttp)
+	g := grav.NewWithTransport(ghttp, nil)
 
 	g.ConnectEndpoint("http://hello.com")
 }

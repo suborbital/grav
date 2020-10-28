@@ -1,6 +1,9 @@
 package grav
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // ErrTransportNotConfigured represent package-level vars
 var (
@@ -11,24 +14,32 @@ var (
 type Grav struct {
 	bus       *messageBus
 	transport Transport
+	discovery Discovery
 }
 
 // New creates a new Grav instance
 func New() *Grav {
-	return NewWithTransport(nil)
+	return NewWithTransport(nil, nil)
 }
 
 // NewWithTransport creates a new Grav with a transport plugin configured
-func NewWithTransport(tspt Transport) *Grav {
+func NewWithTransport(tspt Transport, disc Discovery) *Grav {
 	g := &Grav{
 		bus:       newMessageBus(),
 		transport: tspt,
+		discovery: disc,
 	}
 
-	if tspt != nil {
+	if g.transport != nil {
 		go func() {
-			if err := tspt.Serve(g.Connect()); err != nil {
-				// not sure what to do here, yet
+			if err := g.transport.Serve(g.Connect()); err != nil {
+				fmt.Println("transport failed: " + err.Error())
+			}
+
+			if g.discovery != nil {
+				if err := g.discovery.Start(g.transport, g.Connect); err != nil {
+					fmt.Println("discovery failed: " + err.Error())
+				}
 			}
 		}()
 	}

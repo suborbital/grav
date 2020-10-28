@@ -23,6 +23,8 @@ type Transport interface {
 	Serve(*Pod) error
 	// ConnectEndpoint indicates to the Transport that a connection to a remote endpoint is needed
 	ConnectEndpoint(string, ConnectFunc) error
+	// ConnectEndpointWithUUID connects to an endpoint with a known identifier
+	ConnectEndpointWithUUID(string, string, ConnectFunc) error
 }
 
 // DefaultTransportOpts returns the default Grav Transport options

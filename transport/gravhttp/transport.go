@@ -51,6 +51,11 @@ func (g *GravTransportHTTP) Serve(pod *grav.Pod) error {
 
 // ConnectEndpoint adds an HTTP/S endpoint to emit messages to
 func (g *GravTransportHTTP) ConnectEndpoint(endpoint string, connect grav.ConnectFunc) error {
+	return g.ConnectEndpointWithUUID("", endpoint, connect)
+}
+
+// ConnectEndpointWithUUID adds an HTTP/S endpoint to emit messages to
+func (g *GravTransportHTTP) ConnectEndpointWithUUID(uuid, endpoint string, connect grav.ConnectFunc) error {
 	g.Lock()
 	defer g.Unlock()
 

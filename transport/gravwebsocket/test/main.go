@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/suborbital/grav/discovery/gravlocal"
 	"github.com/suborbital/grav/grav"
 	"github.com/suborbital/grav/transport/gravwebsocket"
 	"github.com/suborbital/vektor/vk"
@@ -18,7 +19,11 @@ func main() {
 		Logger: logger,
 	})
 
-	g := grav.NewWithTransport(gwss)
+	locald := gravlocal.New(&grav.DiscoveryOpts{
+		Logger: logger,
+	})
+
+	g := grav.NewWithTransport(gwss, locald)
 
 	pod := g.Connect()
 	pod.On(func(msg grav.Message) error {
@@ -26,17 +31,11 @@ func main() {
 		return nil
 	})
 
-	if err := g.ConnectEndpoint("ws://localhost:8080/meta/message"); err != nil {
-		logger.Error(err)
-	} else {
-		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, world")))
-	}
-
 	vk := vk.New()
 	vk.HandleHTTP(http.MethodGet, "/meta/message", gwss.HTTPHandlerFunc())
 
 	go func() {
-		<-time.After(time.Second * time.Duration(10))
+		<-time.After(time.Second * time.Duration(20))
 		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, again")))
 	}()
 

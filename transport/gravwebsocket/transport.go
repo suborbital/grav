@@ -53,8 +53,20 @@ func (g *GravTransportWebsocket) Serve(pod *grav.Pod) error {
 
 // ConnectEndpoint adds a websocket endpoint to emit messages to
 func (g *GravTransportWebsocket) ConnectEndpoint(endpoint string, connect grav.ConnectFunc) error {
+	uuid := uuid.New().String()
+
+	return g.ConnectEndpointWithUUID(uuid, endpoint, connect)
+}
+
+// ConnectEndpointWithUUID adds a websocket endpoint to emit messages to
+func (g *GravTransportWebsocket) ConnectEndpointWithUUID(uuid, endpoint string, connect grav.ConnectFunc) error {
 	g.Lock()
 	defer g.Unlock()
+
+	if _, exists := g.connections[uuid]; exists {
+		// nothing to be done, it's likely a re-discovered peer
+		return nil
+	}
 
 	endpointURL, err := url.Parse(endpoint)
 	if err != nil {
@@ -71,7 +83,7 @@ func (g *GravTransportWebsocket) ConnectEndpoint(endpoint string, connect grav.C
 	}
 
 	// runs as long as the connection is alive and handles removing the connection when it dies
-	go g.connectionHandler(c)
+	go g.connectionHandler(uuid, c)
 
 	return nil
 }
@@ -88,7 +100,8 @@ func (g *GravTransportWebsocket) HTTPHandlerFunc() http.HandlerFunc {
 		g.log.Debug("[transport-websocket] upgraded connection:", r.URL.String())
 
 		// blocks as long as the connection is alive and handles removing the connection when it dies
-		g.connectionHandler(c)
+		uuid := uuid.New().String()
+		g.connectionHandler(uuid, c)
 	}
 }
 
@@ -106,9 +119,8 @@ func (g *GravTransportWebsocket) removeConnection(uuid string) {
 	delete(g.connections, uuid)
 }
 
-func (g *GravTransportWebsocket) connectionHandler(conn *websocket.Conn) {
-	// assign the connection a UUID and add it to the connection pool
-	uuid := uuid.New().String()
+func (g *GravTransportWebsocket) connectionHandler(uuid string, conn *websocket.Conn) {
+	// add to the connection pool
 	g.addConnection(uuid, conn)
 
 	g.log.Debug("[transport-websocket] added connection", uuid)

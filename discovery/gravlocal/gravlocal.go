@@ -3,10 +3,8 @@ package gravlocal
 import (
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/schollz/peerdiscovery"
 	"github.com/suborbital/grav/grav"
@@ -15,14 +13,13 @@ import (
 
 // GravDiscoveryLocalNetwork is a grav Discovery plugin using local network multicast
 type GravDiscoveryLocalNetwork struct {
+	opts   *grav.DiscoveryOpts
 	Logger *vlog.Logger
 }
 
 // New creates a new local discovery plugin
-func New(opts *grav.DiscoveryOpts) *GravDiscoveryLocalNetwork {
-	g := &GravDiscoveryLocalNetwork{
-		Logger: opts.Logger,
-	}
+func New() *GravDiscoveryLocalNetwork {
+	g := &GravDiscoveryLocalNetwork{}
 
 	return g
 }
@@ -35,24 +32,22 @@ type LocalDPayload struct {
 }
 
 // Start starts discovery
-func (g *GravDiscoveryLocalNetwork) Start(tspt grav.Transport, connectFunc grav.ConnectFunc) error {
-	g.Logger.Info("[discovery-local] starting discovery")
+func (g *GravDiscoveryLocalNetwork) Start(opts *grav.DiscoveryOpts, tspt grav.Transport, connectFunc grav.ConnectFunc) error {
+	g.opts = opts
+	g.Logger = opts.Logger
 
-	selfUUID := uuid.New().String()
+	g.Logger.Info("[discovery-local] starting discovery")
 
 	payloadFunc := func() []byte {
 		payload := LocalDPayload{
-			UUID: selfUUID,
-			Port: "8081",
+			UUID: g.opts.NodeUUID,
+			Port: fmt.Sprintf("%d", opts.TransportPort),
 			Path: "/meta/message",
 		}
 
 		payloadBytes, _ := json.Marshal(payload)
 		return payloadBytes
 	}
-
-	connected := map[string]bool{}
-	lock := sync.Mutex{}
 
 	notifyFunc := func(d peerdiscovery.Discovered) {
 		g.Logger.Debug("[discovery-local] potential peer found:", d.Address)
@@ -63,20 +58,9 @@ func (g *GravDiscoveryLocalNetwork) Start(tspt grav.Transport, connectFunc grav.
 			return
 		}
 
-		if payload.UUID == selfUUID {
+		if payload.UUID == g.opts.NodeUUID {
 			g.Logger.Debug("[discovery-local] found self, discarding")
 			return
-		} else {
-			lock.Lock()
-			if yup, exists := connected[payload.UUID]; yup && exists {
-				g.Logger.Debug("[discovery-local] found existing peer, discarding")
-				lock.Unlock()
-				return
-			}
-
-			connected[payload.UUID] = true
-
-			lock.Unlock()
 		}
 
 		endpoint := fmt.Sprintf("ws://%s:%s%s", d.Address, payload.Port, payload.Path)
@@ -88,8 +72,6 @@ func (g *GravDiscoveryLocalNetwork) Start(tspt grav.Transport, connectFunc grav.
 			g.Logger.Error(errors.Wrapf(err, "[discovery-local] failed to ConnectEndpoint for %s", d.Address))
 			return
 		}
-
-		g.Logger.Debug("[discovery-local] connected to", d.Address)
 	}
 
 	_, err := peerdiscovery.Discover(peerdiscovery.Settings{

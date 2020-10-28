@@ -24,11 +24,10 @@ type GravTransportHTTP struct {
 }
 
 // New creates a new http transport
-func New(opts *grav.TransportOpts) *GravTransportHTTP {
+func New() *GravTransportHTTP {
 	g := &GravTransportHTTP{
 		pod:       nil, // will be provided upon call to Serve
 		endpoints: []url.URL{},
-		log:       opts.Logger,
 		RWMutex:   sync.RWMutex{},
 	}
 
@@ -36,13 +35,15 @@ func New(opts *grav.TransportOpts) *GravTransportHTTP {
 }
 
 // Serve creates a request server to handle incoming messages (not yet implemented)
-func (g *GravTransportHTTP) Serve(pod *grav.Pod) error {
+func (g *GravTransportHTTP) Serve(opts *grav.TransportOpts, connect grav.ConnectFunc) error {
 	// serving independently is not yet supported, use the handler func methods
 	g.Lock()
 	defer g.Unlock()
 
+	g.log = opts.Logger
+
 	if g.pod == nil {
-		g.pod = pod
+		g.pod = connect()
 		g.pod.On(g.messageHandler())
 	}
 

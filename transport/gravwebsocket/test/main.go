@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/suborbital/grav/discovery/gravlocal"
@@ -14,16 +16,17 @@ import (
 
 func main() {
 	logger := vlog.Default(vlog.Level(vlog.LogLevelDebug))
+	gwss := gravwebsocket.New()
+	locald := gravlocal.New()
 
-	gwss := gravwebsocket.New(&grav.TransportOpts{
-		Logger: logger,
+	port, _ := strconv.Atoi(os.Getenv("VK_HTTP_PORT"))
+
+	g := grav.NewWithOptions(&grav.Opts{
+		Logger:    logger,
+		Port:      port,
+		Transport: gwss,
+		Discovery: locald,
 	})
-
-	locald := gravlocal.New(&grav.DiscoveryOpts{
-		Logger: logger,
-	})
-
-	g := grav.NewWithTransport(gwss, locald)
 
 	pod := g.Connect()
 	pod.On(func(msg grav.Message) error {

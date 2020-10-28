@@ -26,11 +26,10 @@ type GravTransportWebsocket struct {
 }
 
 // New creates a new websocket transport
-func New(opts *grav.TransportOpts) *GravTransportWebsocket {
+func New() *GravTransportWebsocket {
 	g := &GravTransportWebsocket{
 		pod:         nil, // will be provided upon call to Serve
 		connections: map[string]*websocket.Conn{},
-		log:         opts.Logger,
 		RWMutex:     sync.RWMutex{},
 	}
 
@@ -38,13 +37,15 @@ func New(opts *grav.TransportOpts) *GravTransportWebsocket {
 }
 
 // Serve creates a request server to handle incoming messages (not yet implemented)
-func (g *GravTransportWebsocket) Serve(pod *grav.Pod) error {
+func (g *GravTransportWebsocket) Serve(opts *grav.TransportOpts, connect grav.ConnectFunc) error {
 	// serving independently is not yet supported, use the handler func methods
 	g.Lock()
 	defer g.Unlock()
 
+	g.log = opts.Logger
+
 	if g.pod == nil {
-		g.pod = pod
+		g.pod = connect()
 		g.pod.On(g.messageHandler())
 	}
 

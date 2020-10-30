@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/suborbital/grav/discovery/gravlocal"
@@ -19,14 +18,14 @@ func main() {
 	gwss := gravwebsocket.New()
 	locald := gravlocal.New()
 
-	port, _ := strconv.Atoi(os.Getenv("VK_HTTP_PORT"))
+	port := os.Getenv("VK_HTTP_PORT")
 
-	g := grav.NewWithOptions(&grav.Opts{
-		Logger:    logger,
-		Port:      port,
-		Transport: gwss,
-		Discovery: locald,
-	})
+	g := grav.New(
+		grav.UseLogger(logger),
+		grav.UsePort(port),
+		grav.UseTransport(gwss),
+		grav.UseDiscovery(locald),
+	)
 
 	pod := g.Connect()
 	pod.On(func(msg grav.Message) error {

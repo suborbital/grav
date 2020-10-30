@@ -41,7 +41,7 @@ func (g *GravDiscoveryLocalNetwork) Start(opts *grav.DiscoveryOpts, tspt grav.Tr
 	payloadFunc := func() []byte {
 		payload := LocalDPayload{
 			UUID: g.opts.NodeUUID,
-			Port: fmt.Sprintf("%d", opts.TransportPort),
+			Port: opts.TransportPort,
 			Path: "/meta/message",
 		}
 

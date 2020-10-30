@@ -2,9 +2,10 @@ package grav
 
 import "github.com/suborbital/vektor/vlog"
 
-// TransportMsgTypeUser and others represent internal Transport message types used for handshakes and metadata transfer
+// TransportMsgTypeHandshake and others represent internal Transport message types used for handshakes and metadata transfer
 const (
-	TransportMsgTypeUser = 1
+	TransportMsgTypeHandshake = 1
+	TransportMsgTypeUser      = 2
 )
 
 // ConnectFunc represents a function that returns a pod conntected to Grav
@@ -26,4 +27,14 @@ type Transport interface {
 	ConnectEndpoint(string, ConnectFunc) error
 	// ConnectEndpointWithUUID connects to an endpoint with a known identifier
 	ConnectEndpointWithUUID(string, string, ConnectFunc) error
+}
+
+// TransportHandshake represents a handshake sent to a node that you're trying to connect to
+type TransportHandshake struct {
+	UUID string `json:"uuid"`
+}
+
+// TransportHandshakeAck represents a handshake response
+type TransportHandshakeAck struct {
+	UUID string `json:"uuid"`
 }

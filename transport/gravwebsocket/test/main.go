@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	logger := vlog.Default(vlog.Level(vlog.LogLevelDebug))
+	logger := vlog.Default(vlog.Level(vlog.LogLevelInfo))
 	gwss := gravwebsocket.New()
 	locald := gravlocal.New()
 
@@ -38,7 +38,10 @@ func main() {
 	vk.HandleHTTP(http.MethodGet, "/meta/message", gwss.HTTPHandlerFunc())
 
 	go func() {
-		<-time.After(time.Second * time.Duration(20))
+		<-time.After(time.Second * time.Duration(10))
+		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, world")))
+
+		<-time.After(time.Second * time.Duration(10))
 		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, again")))
 	}()
 

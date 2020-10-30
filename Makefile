@@ -2,9 +2,19 @@
 test:
 	go test -v -count=1 ./...
 
-# test one thing
-t1:
-	go test -timeout 30s -v -count=1 -run ^$(test)$$ ./grav
+transport/http:
+	@$(MAKE) --no-print-directory -C transport/gravhttp $@
+
+transport/http/%:
+	@$(MAKE) --no-print-directory -C transport/gravhttp $@
+
+transport/websocket:
+	@$(MAKE) --no-print-directory -C transport/gravwebsocket $@
+
+transport/websocket/%:
+	@$(MAKE) --no-print-directory -C transport/gravwebsocket $@
 
 deps:
 	go get -u -d ./...
+
+.PHONY: test t1 deps

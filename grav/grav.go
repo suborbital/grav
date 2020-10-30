@@ -15,11 +15,11 @@ type Grav struct {
 
 // New creates a new Grav instance
 func New() *Grav {
-	return NewWithTransport(nil, nil)
+	return NewWithTransport(nil)
 }
 
 // NewWithTransport creates a new Grav with a transport plugin configured
-func NewWithTransport(tspt Transport, opts *TransportOpts) *Grav {
+func NewWithTransport(tspt Transport) *Grav {
 	g := &Grav{
 		bus:       newMessageBus(),
 		transport: tspt,
@@ -27,7 +27,7 @@ func NewWithTransport(tspt Transport, opts *TransportOpts) *Grav {
 
 	if tspt != nil {
 		go func() {
-			if err := tspt.Serve(opts, g.Connect()); err != nil {
+			if err := tspt.Serve(g.Connect()); err != nil {
 				// not sure what to do here, yet
 			}
 		}()

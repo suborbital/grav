@@ -1,8 +1,7 @@
 package grav
 
 import (
-	"errors"
-	"fmt"
+	"github.com/pkg/errors"
 
 	"github.com/google/uuid"
 	"github.com/suborbital/vektor/vlog"
@@ -22,53 +21,42 @@ type Grav struct {
 	discovery Discovery
 }
 
-// Opts represent Grav options
-type Opts struct {
-	Logger    *vlog.Logger
-	Port      int
-	Transport Transport
-	Discovery Discovery
-}
-
-// New creates a new Grav instance with no transport or discovery enabled
-func New() *Grav {
-	return NewWithOptions(&Opts{vlog.Default(), 8080, nil, nil})
-}
-
-// NewWithOptions creates a new Grav with a logger, transport, and discovery configured
-func NewWithOptions(opts *Opts) *Grav {
+// New creates a new Grav with the provided options
+func New(opts ...OptionsModifier) *Grav {
 	nodeUUID := uuid.New().String()
+
+	options := newOptionsWithModifiers(opts...)
 
 	g := &Grav{
 		NodeUUID:  nodeUUID,
 		bus:       newMessageBus(),
-		logger:    opts.Logger,
-		transport: opts.Transport,
-		discovery: opts.Discovery,
+		logger:    options.Logger,
+		transport: options.Transport,
+		discovery: options.Discovery,
 	}
 
 	// start transport, then discovery if each have been configured (can have transport but no discovery)
 	if g.transport != nil {
 		transportOpts := &TransportOpts{
 			NodeUUID: nodeUUID,
-			Port:     opts.Port,
-			Logger:   opts.Logger,
+			Port:     options.Port,
+			Logger:   options.Logger,
 		}
 
 		go func() {
 			if err := g.transport.Serve(transportOpts, g.Connect); err != nil {
-				fmt.Println("transport failed: " + err.Error())
+				options.Logger.Error(errors.Wrap(err, "failed to Serve transport"))
 			}
 
 			if g.discovery != nil {
 				discoveryOpts := &DiscoveryOpts{
 					NodeUUID:      nodeUUID,
 					TransportPort: transportOpts.Port,
-					Logger:        opts.Logger,
+					Logger:        options.Logger,
 				}
 
 				if err := g.discovery.Start(discoveryOpts, g.transport, g.Connect); err != nil {
-					fmt.Println("discovery failed: " + err.Error())
+					options.Logger.Error(errors.Wrap(err, "failed to Start discovery"))
 				}
 			}
 		}()

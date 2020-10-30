@@ -14,7 +14,7 @@ type ConnectFunc func() *Pod
 // TransportOpts is a set of options for transports
 type TransportOpts struct {
 	NodeUUID string
-	Port     int
+	Port     string
 	Logger   *vlog.Logger
 	Custom   interface{}
 }

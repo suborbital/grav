@@ -10,7 +10,7 @@ type Discovery interface {
 // DiscoveryOpts is a set of options for transports
 type DiscoveryOpts struct {
 	NodeUUID      string
-	TransportPort int
+	TransportPort string
 	Logger        *vlog.Logger
 	Custom        interface{}
 }

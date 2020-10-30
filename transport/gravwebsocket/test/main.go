@@ -3,8 +3,11 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
+	"github.com/suborbital/grav/discovery/gravlocal"
 	"github.com/suborbital/grav/grav"
 	"github.com/suborbital/grav/transport/gravwebsocket"
 	"github.com/suborbital/vektor/vk"
@@ -12,13 +15,18 @@ import (
 )
 
 func main() {
-	logger := vlog.Default(vlog.Level(vlog.LogLevelDebug))
+	logger := vlog.Default(vlog.Level(vlog.LogLevelInfo))
+	gwss := gravwebsocket.New()
+	locald := gravlocal.New()
 
-	gwss := gravwebsocket.New(&grav.TransportOpts{
-		Logger: logger,
+	port, _ := strconv.Atoi(os.Getenv("VK_HTTP_PORT"))
+
+	g := grav.NewWithOptions(&grav.Opts{
+		Logger:    logger,
+		Port:      port,
+		Transport: gwss,
+		Discovery: locald,
 	})
-
-	g := grav.NewWithTransport(gwss)
 
 	pod := g.Connect()
 	pod.On(func(msg grav.Message) error {
@@ -26,16 +34,13 @@ func main() {
 		return nil
 	})
 
-	if err := g.ConnectEndpoint("ws://localhost:8080/meta/message"); err != nil {
-		logger.Error(err)
-	} else {
-		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, world")))
-	}
-
 	vk := vk.New()
 	vk.HandleHTTP(http.MethodGet, "/meta/message", gwss.HTTPHandlerFunc())
 
 	go func() {
+		<-time.After(time.Second * time.Duration(10))
+		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, world")))
+
 		<-time.After(time.Second * time.Duration(10))
 		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, again")))
 	}()

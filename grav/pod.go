@@ -12,10 +12,11 @@ const (
 	defaultPodChanSize = 128
 )
 
+// podFeedbackMsgReplay and others are the messages sent via feedback channel when the pod needs to communicate its state to the bus
 var (
-	// podFeedbackMsgReplay is the message sent via feedback channel when message replay is desired
-	podFeedbackMsgReplay  = NewMsg(msgTypePodFeedback, []byte{})
-	podFeedbackMsgSuccess = NewMsg(msgTypePodFeedback, []byte{})
+	podFeedbackMsgReplay     = NewMsg(msgTypePodFeedback, []byte{})
+	podFeedbackMsgSuccess    = NewMsg(msgTypePodFeedback, []byte{})
+	podFeedbackMsgDisconnect = NewMsg(msgTypePodFeedback, []byte{})
 )
 
 /**
@@ -76,6 +77,15 @@ func newPod(busChan MsgChan, opts *podOpts) *Pod {
 	p.start()
 
 	return p
+}
+
+// Disconnect indicates to the bus that this pod is no longer needed and should be disconnected.
+// Sending will immediately become unavailable, and the pod will soon stop recieving messages.
+func (p *Pod) Disconnect() {
+	// stop future messages from being sent and then indicate to the bus that disconnection is desired
+	// The bus will close the busChan, which will cause the onFunc listener to quit.
+	p.dead.Store(false)
+	p.feedbackChan <- podFeedbackMsgDisconnect
 }
 
 // Send emits a message to be routed to the bus

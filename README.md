@@ -1,6 +1,10 @@
 ![logo_transparent](https://user-images.githubusercontent.com/5942370/88551418-d623ea00-cff0-11ea-87d8-e9b94174aaa2.png)
 
-Grav is an embedded distributed message bus. It is designed with a very narrow purpose, and is not meant to replace more general-purpose systems such as RabbitMQ, Kafka, or others. Grav is designed to allow interconnected components of your systems to communicate effectively in a reliable, asynchronous manner. HTTP and RPC are hard to scale well in modern distributed systems, but Grav is designed to be performant and resilient in various distributed environments. This project has several goals and a few non-goals:
+Grav is an embedded distributed message bus. It is designed with a very narrow purpose, and is not meant to replace more general-purpose systems such as RabbitMQ, Kafka, or others. Grav is designed to allow interconnected components of your systems to communicate effectively in a reliable, asynchronous manner. HTTP and RPC are hard to scale well in modern distributed systems, but Grav is designed to be performant and resilient in various distributed environments. 
+
+Since Grav is embedded, it is instantiated as a `grav.Grav` object which your application code connects to in order to send and recieve messages. Grav connects to other nodes via transport plugins such as [gravwebsocket](./transport/gravwebsocket/README.md) which extends the Grav core to become a networked distributed messaging system. Grav does not require a centralized broker, and as such has some limitations, but for certain applications it is vastly simpler (and more extensible) than a centralized messaging system.
+
+This project has several goals and a few non-goals:
 
 Goals:
 - Have very low resource and memory consumption.
@@ -19,10 +23,6 @@ Non-Goals:
 
 In a search for the right messaging system to use in concert with Hive and Vektor, many options were evaluated. Unfortunately, every option either required the use of CGO, or relied on a centralized broker which would complicate deployments. Reluctantly, the decision was made to implement a message bus of our own. I say reluctantly as there is nothing worse than re-inventing the wheel, but alas none of the mainstream projects support the use-cases that Suborbital's frameworks are aiming to handle. To avoid "Yak Shaving" as much as possible, Grav is designed to be a powerful core that is focused on being a very reliable, performant message bus. Anything beyond that, including the transport layer, is provided via a plugin, not Grav itself.
 
-## Intro
-
-Grav is an embedded message bus, meaning that it is instantiated as a `grav.Grav` object which your application code connects to in order to send and recieve messages. Grav connects to other nodes via transport plugins such as [grav-transport-http](https://github.com/suborbital/grav-transport-http) which extends the Grav core to become a networked distributed messaging system. Grav does not require a centralized broker, and as such has some limitations, but for certain applications it is vastly simpler (and more extensible) than a centralized messaging system.
-
 ## Transports
 Grav has two "first-party" transports:
 - gravhttp, a simplistic transport using HTTP requests to emit messages. [Read more here](./transport/gravhttp/README.md)
@@ -32,8 +32,8 @@ Grav transports are designed as plugins, and as such anyone can create one for t
 
 ## Project status
 
-Grav is currently in beta, and is being developed alongside (and is designed to integrate with) [Vektor](https://github.com/suborbital/vektor) and [Hive](https://github.com/suborbital/hive).
+Grav is currently in beta, and is being developed alongside (and is designed to integrate with) [Vektor](https://github.com/suborbital/vektor) and [Hive](https://github.com/suborbital/hive). It is also the messaging core that powers Suborbital's flagship project, [Atmo](https://github.com/suborbital/atmo).
 
-Documentation will be coming soon.
+Full documentation will be coming soon. See the various `*_test.go` files if you are looking for examples on how to use Grav. There is a transport-enabled example in [the gravwebsocket directory](./transport/gravwebsocket/test/main.go).
 
-Copyright Suborbital contributors 2020
+Copyright Suborbital contributors 2020.

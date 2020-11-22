@@ -334,3 +334,34 @@ func TestPodReplayPt2(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestPodDisconnect(t *testing.T) {
+	g := New()
+
+	counter := testutil.NewAsyncCounter(10)
+
+	p1 := g.Connect()
+	p1.On(func(msg Message) error {
+		counter.Count()
+		return nil
+	})
+
+	p2 := g.Connect()
+	p2.On(func(msg Message) error {
+		counter.Count()
+		return nil
+	})
+
+	p3 := g.Connect()
+
+	p1.Disconnect()
+
+	for i := 0; i < 5; i++ {
+		p3.Send(NewMsg(MsgTypeDefault, []byte("testing disconnect")))
+	}
+
+	// since p1 disconnected, we should only get a count of 5 (from p2, which is still connected)
+	if err := counter.Wait(5, 1); err != nil {
+		t.Error(err)
+	}
+}

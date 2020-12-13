@@ -79,15 +79,6 @@ func newPod(busChan MsgChan, opts *podOpts) *Pod {
 	return p
 }
 
-// Disconnect indicates to the bus that this pod is no longer needed and should be disconnected.
-// Sending will immediately become unavailable, and the pod will soon stop recieving messages.
-func (p *Pod) Disconnect() {
-	// stop future messages from being sent and then indicate to the bus that disconnection is desired
-	// The bus will close the busChan, which will cause the onFunc listener to quit.
-	p.dead.Store(false)
-	p.feedbackChan <- podFeedbackMsgDisconnect
-}
-
 // Send emits a message to be routed to the bus
 func (p *Pod) Send(msg Message) {
 	// check to see if the pod has died (aka disconnected)
@@ -98,22 +89,6 @@ func (p *Pod) Send(msg Message) {
 	p.FilterUUID(msg.UUID(), false) // don't allow the same message to bounce back through this pod
 
 	p.busChan <- msg
-}
-
-// ReplyTo sends a response to a message
-func (p *Pod) ReplyTo(ticket MessageTicket, msg Message) {
-	msg.SetReplyTo(ticket.UUID)
-
-	p.Send(msg)
-}
-
-// SendAndWaitOnReply sends a message and then blocks until a message is recieved in ReplyTo that message
-func (p *Pod) SendAndWaitOnReply(msg Message, onFunc MsgFunc, timeoutSeconds ...int) error {
-	ticket := msg.Ticket()
-
-	p.Send(msg)
-
-	return p.WaitOnReply(ticket, onFunc, timeoutSeconds...)
 }
 
 // On sets the function to be called whenever this pod recieves a message from the bus. If nil is passed, the pod will ignore all messages.
@@ -128,20 +103,52 @@ func (p *Pod) On(onFunc MsgFunc) {
 	p.setOnFunc(onFunc)
 }
 
-// OnType sets the function to be called whenever this pod recieves a message and sets the pod's filter to only include certain message types
-func (p *Pod) OnType(onFunc MsgFunc, msgTypes ...string) {
-	p.onFuncLock.Lock()
-	defer p.onFuncLock.Unlock()
+// Disconnect indicates to the bus that this pod is no longer needed and should be disconnected.
+// Sending will immediately become unavailable, and the pod will soon stop recieving messages.
+func (p *Pod) Disconnect() {
+	// stop future messages from being sent and then indicate to the bus that disconnection is desired
+	// The bus will close the busChan, which will cause the onFunc listener to quit.
+	p.dead.Store(true)
+	p.feedbackChan <- podFeedbackMsgDisconnect
+}
 
-	// reset the message filter when the onFunc is changed
-	p.messageFilter = newMessageFilter()
-	p.TypeInclusive = false // only allow the listed types
+// ReplyTo sends a response to a message
+func (p *Pod) ReplyTo(ticket MessageTicket, msg Message) {
+	msg.SetReplyTo(ticket.UUID)
 
-	for _, t := range msgTypes {
-		p.FilterType(t, true)
+	p.Send(msg)
+}
+
+// SendAndWaitOnReply sends a message and then blocks until a message is recieved in ReplyTo that message
+// If timeout is greater than 0, ErrWaitTimeout will be returned if a reply is not received.
+func (p *Pod) SendAndWaitOnReply(msg Message, timeoutSeconds int, onFunc MsgFunc) error {
+	ticket := msg.Ticket()
+
+	p.Send(msg)
+
+	return p.WaitOnReply(ticket, timeoutSeconds, onFunc)
+}
+
+// WaitOnReply waits on a reply message to arrive at the pod and then calls onFunc with that message.
+// If the onFunc produces an error, it will be propogated to the caller.
+// If a timeout greater than 0 is passed, the function will time out after the provided number of seconds and
+// return ErrWaitTimeout if no message is recieved.
+func (p *Pod) WaitOnReply(ticket MessageTicket, timeoutSeconds int, onFunc MsgFunc) error {
+	var reply Message
+
+	if err := p.WaitOn(timeoutSeconds, func(msg Message) error {
+		if msg.ReplyTo() != ticket.UUID {
+			return ErrMsgNotWanted
+		}
+
+		reply = msg
+
+		return nil
+	}); err != nil {
+		return err
 	}
 
-	p.setOnFunc(onFunc)
+	return onFunc(reply)
 }
 
 // ErrMsgNotWanted is used by WaitOn to determine if the current message is what's being waited on
@@ -154,14 +161,20 @@ var ErrWaitTimeout = errors.New("waited past timeout")
 // something other than ErrMsgNotWanted. WaitOn should be used if there is a need to wait for a particular message.
 // When the onFunc returns something other than ErrMsgNotWanted (such as nil or a different error), WaitOn will return and set
 // the onFunc to nil. If an error other than ErrMsgNotWanted is returned from the onFunc, it will be propogated to the caller.
-// An optional timeout (default 10s) can be provided (only the first value will be used). If the timeout is exceeded, ErrWaitTimeout is returned.
-func (p *Pod) WaitOn(onFunc MsgFunc, timeoutSeconds ...int) error {
+// A timeout can be provided. If the value is greater than 0 and the timeout is exceeded, ErrWaitTimeout is returned.
+func (p *Pod) WaitOn(timeoutSeconds int, onFunc MsgFunc) error {
 	p.onFuncLock.Lock()
 	errChan := make(chan error)
 
 	p.setOnFunc(func(msg Message) error {
-		if err := onFunc(msg); err != ErrMsgNotWanted {
+		if err := onFunc(msg); err != nil {
+			if err == ErrMsgNotWanted {
+				return nil // don't do anything
+			}
+
 			errChan <- err
+		} else {
+			errChan <- nil
 		}
 
 		return nil
@@ -169,17 +182,17 @@ func (p *Pod) WaitOn(onFunc MsgFunc, timeoutSeconds ...int) error {
 
 	p.onFuncLock.Unlock() // can't stay locked here or the onFunc will never be called
 
-	timeout := 3
-	if timeoutSeconds != nil {
-		timeout = timeoutSeconds[0]
-	}
-
+	var timeoutChan chan time.Time
 	var onFuncErr error
+
+	if timeoutSeconds > 0 {
+		timeoutChan <- <-time.After(time.Second * time.Duration(timeoutSeconds))
+	}
 
 	select {
 	case err := <-errChan:
 		onFuncErr = err
-	case <-time.After(time.Second * time.Duration(timeout)):
+	case <-timeoutChan:
 		onFuncErr = ErrWaitTimeout
 	}
 
@@ -191,25 +204,18 @@ func (p *Pod) WaitOn(onFunc MsgFunc, timeoutSeconds ...int) error {
 	return onFuncErr
 }
 
-// WaitOnReply waits on a reply message to arrive at the pod and then calls onFunc with that message.
-// If the onFunc produces an error, it will be propogated to the caller.
-// an optionsl timrout can be provided (only the first value will be used)
-func (p *Pod) WaitOnReply(ticket MessageTicket, onFunc MsgFunc, timeoutSeconds ...int) error {
-	var reply Message
+// OnType sets the function to be called whenever this pod recieves a message and sets the pod's filter to only include certain message types
+func (p *Pod) OnType(msgType string, onFunc MsgFunc) {
+	p.onFuncLock.Lock()
+	defer p.onFuncLock.Unlock()
 
-	if err := p.WaitOn(func(msg Message) error {
-		if msg.ReplyTo() != ticket.UUID {
-			return ErrMsgNotWanted
-		}
+	// reset the message filter when the onFunc is changed
+	p.messageFilter = newMessageFilter()
+	p.TypeInclusive = false // only allow the listed types
 
-		reply = msg
+	p.FilterType(msgType, true)
 
-		return nil
-	}, timeoutSeconds...); err != nil {
-		return err
-	}
-
-	return onFunc(reply)
+	p.setOnFunc(onFunc)
 }
 
 // setOnFunc sets the OnFunc. THIS DOES NOT LOCK. THE CALLER MUST LOCK.

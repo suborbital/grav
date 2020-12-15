@@ -11,15 +11,13 @@ func TestRequestReply(t *testing.T) {
 	g := New()
 	p1 := g.Connect()
 
-	msg := NewMsg(MsgTypeDefault, []byte("joey"))
-	p1.Send(msg)
+	ticket := p1.Send(NewMsg(MsgTypeDefault, []byte("joey")))
 
 	p2 := g.ConnectWithReplay()
 	p2.On(func(msg Message) error {
 		data := string(msg.Data())
 
-		reply := NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hey %s", data)))
-		p2.ReplyTo(msg.Ticket(), reply)
+		p2.ReplyTo(msg, NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hey %s", data))))
 
 		return nil
 	})
@@ -27,7 +25,7 @@ func TestRequestReply(t *testing.T) {
 	counter := testutil.NewAsyncCounter(10)
 
 	go func() {
-		p1.WaitOnReply(msg.Ticket(), nil, func(msg Message) error {
+		ticket.Wait(func(msg Message) error {
 			if string(msg.Data()) == "hey joey" {
 				counter.Count()
 			}
@@ -46,8 +44,7 @@ func TestRequestReplySugar(t *testing.T) {
 	counter := testutil.NewAsyncCounter(10)
 
 	go func() {
-		msg := NewMsg(MsgTypeDefault, []byte("joey"))
-		p1.SendAndWaitOnReply(msg, nil, func(msg Message) error {
+		p1.Send(NewMsg(MsgTypeDefault, []byte("joey"))).Wait(func(msg Message) error {
 			counter.Count()
 			return nil
 		})
@@ -58,7 +55,7 @@ func TestRequestReplySugar(t *testing.T) {
 		data := string(msg.Data())
 
 		reply := NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hey %s", data)))
-		p2.ReplyTo(msg.Ticket(), reply)
+		p2.ReplyTo(msg, reply)
 
 		return nil
 	})
@@ -73,8 +70,7 @@ func TestRequestReplyTimeout(t *testing.T) {
 	counter := testutil.NewAsyncCounter(10)
 
 	go func() {
-		msg := NewMsg(MsgTypeDefault, []byte("joey"))
-		if err := p1.SendAndWaitOnReply(msg, TO(1), func(msg Message) error {
+		if err := p1.Send(NewMsg(MsgTypeDefault, []byte("joey"))).WaitUntil(TO(1), func(msg Message) error {
 			return nil
 		}); err == ErrWaitTimeout {
 			counter.Count()

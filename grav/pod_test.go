@@ -54,7 +54,7 @@ func TestWaitOn(t *testing.T) {
 
 	p2 := g.Connect()
 
-	if err := p2.WaitOn(nil, func(msg Message) error {
+	if err := p2.WaitOn(func(msg Message) error {
 		if bytes.Equal(msg.Data(), []byte("hello, world")) {
 			return nil
 		}
@@ -64,7 +64,7 @@ func TestWaitOn(t *testing.T) {
 		t.Errorf("expected nil error, got %s", err)
 	}
 
-	if err := p2.WaitOn(nil, func(msg Message) error {
+	if err := p2.WaitOn(func(msg Message) error {
 		if bytes.Equal(msg.Data(), []byte("goodbye, world")) {
 			return errGoodbye
 		}

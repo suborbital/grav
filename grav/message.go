@@ -31,8 +31,6 @@ type Message interface {
 	ReplyTo() string
 	// Allow setting a message UUID that this message is a response to
 	SetReplyTo(string)
-	// Get a MessageTicket that references this message
-	Ticket() MessageTicket
 	// Type of message (application-specific)
 	Type() string
 	// Time the message was sent
@@ -45,11 +43,6 @@ type Message interface {
 	Marshal() ([]byte, error)
 	// Unmarshal encoded Message into object
 	Unmarshal([]byte) error
-}
-
-// MessageTicket represents a "ticket" that references a message that was sent with the hopes of getting a response
-type MessageTicket struct {
-	UUID string
 }
 
 // NewMsg creates a new Message with the built-in `_message` type
@@ -145,14 +138,6 @@ func (m *_message) ReplyTo() string {
 
 func (m *_message) SetReplyTo(uuid string) {
 	m.Meta.ReplyTo = uuid
-}
-
-func (m *_message) Ticket() MessageTicket {
-	t := MessageTicket{
-		UUID: m.Meta.UUID,
-	}
-
-	return t
 }
 
 func (m *_message) Type() string {

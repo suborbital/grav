@@ -4,7 +4,6 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 const (
@@ -121,22 +120,22 @@ func (p *Pod) ReplyTo(ticket MessageTicket, msg Message) {
 
 // SendAndWaitOnReply sends a message and then blocks until a message is recieved in ReplyTo that message
 // If timeout is greater than 0, ErrWaitTimeout will be returned if a reply is not received.
-func (p *Pod) SendAndWaitOnReply(msg Message, timeoutSeconds int, onFunc MsgFunc) error {
+func (p *Pod) SendAndWaitOnReply(msg Message, timeout TimeoutFunc, onFunc MsgFunc) error {
 	ticket := msg.Ticket()
 
 	p.Send(msg)
 
-	return p.WaitOnReply(ticket, timeoutSeconds, onFunc)
+	return p.WaitOnReply(ticket, timeout, onFunc)
 }
 
 // WaitOnReply waits on a reply message to arrive at the pod and then calls onFunc with that message.
 // If the onFunc produces an error, it will be propogated to the caller.
 // If a timeout greater than 0 is passed, the function will time out after the provided number of seconds and
 // return ErrWaitTimeout if no message is recieved.
-func (p *Pod) WaitOnReply(ticket MessageTicket, timeoutSeconds int, onFunc MsgFunc) error {
+func (p *Pod) WaitOnReply(ticket MessageTicket, timeout TimeoutFunc, onFunc MsgFunc) error {
 	var reply Message
 
-	if err := p.WaitOn(timeoutSeconds, func(msg Message) error {
+	if err := p.WaitOn(timeout, func(msg Message) error {
 		if msg.ReplyTo() != ticket.UUID {
 			return ErrMsgNotWanted
 		}
@@ -161,8 +160,8 @@ var ErrWaitTimeout = errors.New("waited past timeout")
 // something other than ErrMsgNotWanted. WaitOn should be used if there is a need to wait for a particular message.
 // When the onFunc returns something other than ErrMsgNotWanted (such as nil or a different error), WaitOn will return and set
 // the onFunc to nil. If an error other than ErrMsgNotWanted is returned from the onFunc, it will be propogated to the caller.
-// A timeout can be provided. If the value is greater than 0 and the timeout is exceeded, ErrWaitTimeout is returned.
-func (p *Pod) WaitOn(timeoutSeconds int, onFunc MsgFunc) error {
+// A timeout can be provided. If the timeout is non-nil and greater than 0, ErrWaitTimeout is returned if the time is exceeded.
+func (p *Pod) WaitOn(timeout TimeoutFunc, onFunc MsgFunc) error {
 	p.onFuncLock.Lock()
 	errChan := make(chan error)
 
@@ -182,17 +181,15 @@ func (p *Pod) WaitOn(timeoutSeconds int, onFunc MsgFunc) error {
 
 	p.onFuncLock.Unlock() // can't stay locked here or the onFunc will never be called
 
-	var timeoutChan chan time.Time
 	var onFuncErr error
-
-	if timeoutSeconds > 0 {
-		timeoutChan <- <-time.After(time.Second * time.Duration(timeoutSeconds))
+	if timeout == nil {
+		timeout = Timeout(-1)
 	}
 
 	select {
 	case err := <-errChan:
 		onFuncErr = err
-	case <-timeoutChan:
+	case <-timeout():
 		onFuncErr = ErrWaitTimeout
 	}
 

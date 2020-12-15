@@ -27,7 +27,7 @@ func TestRequestReply(t *testing.T) {
 	counter := testutil.NewAsyncCounter(10)
 
 	go func() {
-		p1.WaitOnReply(msg.Ticket(), -1, func(msg Message) error {
+		p1.WaitOnReply(msg.Ticket(), nil, func(msg Message) error {
 			if string(msg.Data()) == "hey joey" {
 				counter.Count()
 			}
@@ -47,7 +47,7 @@ func TestRequestReplySugar(t *testing.T) {
 
 	go func() {
 		msg := NewMsg(MsgTypeDefault, []byte("joey"))
-		p1.SendAndWaitOnReply(msg, -1, func(msg Message) error {
+		p1.SendAndWaitOnReply(msg, nil, func(msg Message) error {
 			counter.Count()
 			return nil
 		})
@@ -74,7 +74,7 @@ func TestRequestReplyTimeout(t *testing.T) {
 
 	go func() {
 		msg := NewMsg(MsgTypeDefault, []byte("joey"))
-		if err := p1.SendAndWaitOnReply(msg, 1, func(msg Message) error {
+		if err := p1.SendAndWaitOnReply(msg, TO(1), func(msg Message) error {
 			return nil
 		}); err == ErrWaitTimeout {
 			counter.Count()

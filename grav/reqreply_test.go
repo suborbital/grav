@@ -34,7 +34,9 @@ func TestRequestReply(t *testing.T) {
 		})
 	}()
 
-	counter.Wait(1, 1)
+	if err := counter.Wait(1, 1); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestRequestReplySugar(t *testing.T) {
@@ -60,18 +62,20 @@ func TestRequestReplySugar(t *testing.T) {
 		return nil
 	})
 
-	counter.Wait(1, 1)
+	if err := counter.Wait(1, 1); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestRequestReplyLoop(t *testing.T) {
 	g := New()
 	p1 := g.Connect()
 
-	counter := testutil.NewAsyncCounter(10)
+	counter := testutil.NewAsyncCounter(2000)
 
 	// testing to ensure calling Send and ticket.Wait in a loop doesn't cause any deadlocks etc.
 	go func() {
-		for i := 0; i < 100; i++ {
+		for i := 0; i < 1000; i++ {
 			p1.Send(NewMsg(MsgTypeDefault, []byte("joey"))).Wait(func(msg Message) error {
 				counter.Count()
 				return nil
@@ -89,7 +93,9 @@ func TestRequestReplyLoop(t *testing.T) {
 		return nil
 	})
 
-	counter.Wait(100, 2)
+	if err := counter.Wait(1000, 2); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestRequestReplyTimeout(t *testing.T) {
@@ -106,5 +112,7 @@ func TestRequestReplyTimeout(t *testing.T) {
 		}
 	}()
 
-	counter.Wait(1, 2)
+	if err := counter.Wait(1, 2); err != nil {
+		t.Error(err)
+	}
 }

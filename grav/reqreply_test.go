@@ -63,6 +63,35 @@ func TestRequestReplySugar(t *testing.T) {
 	counter.Wait(1, 1)
 }
 
+func TestRequestReplyLoop(t *testing.T) {
+	g := New()
+	p1 := g.Connect()
+
+	counter := testutil.NewAsyncCounter(10)
+
+	// testing to ensure calling Send and ticket.Wait in a loop doesn't cause any deadlocks etc.
+	go func() {
+		for i := 0; i < 100; i++ {
+			p1.Send(NewMsg(MsgTypeDefault, []byte("joey"))).Wait(func(msg Message) error {
+				counter.Count()
+				return nil
+			})
+		}
+	}()
+
+	p2 := g.ConnectWithReplay()
+	p2.On(func(msg Message) error {
+		data := string(msg.Data())
+
+		reply := NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hey %s", data)))
+		p2.ReplyTo(msg, reply)
+
+		return nil
+	})
+
+	counter.Wait(100, 2)
+}
+
 func TestRequestReplyTimeout(t *testing.T) {
 	g := New()
 	p1 := g.Connect()

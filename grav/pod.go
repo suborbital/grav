@@ -185,6 +185,8 @@ func (p *Pod) WaitOn(onFunc MsgFunc) error {
 // A timeout can be provided. If the timeout is non-nil and greater than 0, ErrWaitTimeout is returned if the time is exceeded.
 func (p *Pod) WaitUntil(timeout TimeoutFunc, onFunc MsgFunc) error {
 	p.onFuncLock.Lock()
+	defer p.onFuncLock.Unlock()
+
 	errChan := make(chan error)
 
 	p.setOnFunc(func(msg Message) error {
@@ -201,8 +203,6 @@ func (p *Pod) WaitUntil(timeout TimeoutFunc, onFunc MsgFunc) error {
 		return nil
 	})
 
-	p.onFuncLock.Unlock() // can't stay locked here or the onFunc will never be called
-
 	var onFuncErr error
 	if timeout == nil {
 		timeout = Timeout(-1)
@@ -214,9 +214,6 @@ func (p *Pod) WaitUntil(timeout TimeoutFunc, onFunc MsgFunc) error {
 	case <-timeout():
 		onFuncErr = ErrWaitTimeout
 	}
-
-	p.onFuncLock.Lock()
-	defer p.onFuncLock.Unlock()
 
 	p.setOnFunc(nil)
 

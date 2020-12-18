@@ -11,43 +11,10 @@ func TestRequestReply(t *testing.T) {
 	g := New()
 	p1 := g.Connect()
 
-	msg := NewMsg(MsgTypeDefault, []byte("joey"))
-	p1.Send(msg)
-
-	p2 := g.ConnectWithReplay()
-	p2.On(func(msg Message) error {
-		data := string(msg.Data())
-
-		reply := NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hey %s", data)))
-		p2.ReplyTo(msg.Ticket(), reply)
-
-		return nil
-	})
-
 	counter := testutil.NewAsyncCounter(10)
 
 	go func() {
-		p1.WaitOnReply(msg.Ticket(), func(msg Message) error {
-			if string(msg.Data()) == "hey joey" {
-				counter.Count()
-			}
-
-			return nil
-		})
-	}()
-
-	counter.Wait(1, 1)
-}
-
-func TestRequestReplySugar(t *testing.T) {
-	g := New()
-	p1 := g.Connect()
-
-	counter := testutil.NewAsyncCounter(10)
-
-	go func() {
-		msg := NewMsg(MsgTypeDefault, []byte("joey"))
-		p1.SendAndWaitOnReply(msg, func(msg Message) error {
+		p1.Send(NewMsg(MsgTypeDefault, []byte("joey"))).WaitOn(func(msg Message) error {
 			counter.Count()
 			return nil
 		})
@@ -58,12 +25,71 @@ func TestRequestReplySugar(t *testing.T) {
 		data := string(msg.Data())
 
 		reply := NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hey %s", data)))
-		p2.ReplyTo(msg.Ticket(), reply)
+		p2.ReplyTo(msg, reply)
 
 		return nil
 	})
 
-	counter.Wait(1, 1)
+	if err := counter.Wait(1, 1); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestRequestReplyAsync(t *testing.T) {
+	g := New()
+	p1 := g.Connect()
+
+	counter := testutil.NewAsyncCounter(10)
+
+	p1.Send(NewMsg(MsgTypeDefault, []byte("joey"))).OnReply(func(msg Message) error {
+		counter.Count()
+		return nil
+	})
+
+	p2 := g.ConnectWithReplay()
+	p2.On(func(msg Message) error {
+		data := string(msg.Data())
+
+		reply := NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hey %s", data)))
+		p2.ReplyTo(msg, reply)
+
+		return nil
+	})
+
+	if err := counter.Wait(1, 1); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestRequestReplyLoop(t *testing.T) {
+	g := New()
+	p1 := g.Connect()
+
+	counter := testutil.NewAsyncCounter(2000)
+
+	// testing to ensure calling Send and receipt.Wait in a loop doesn't cause any deadlocks etc.
+	go func() {
+		for i := 0; i < 1000; i++ {
+			p1.Send(NewMsg(MsgTypeDefault, []byte("joey"))).WaitOn(func(msg Message) error {
+				counter.Count()
+				return nil
+			})
+		}
+	}()
+
+	p2 := g.ConnectWithReplay()
+	p2.On(func(msg Message) error {
+		data := string(msg.Data())
+
+		reply := NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hey %s", data)))
+		p2.ReplyTo(msg, reply)
+
+		return nil
+	})
+
+	if err := counter.Wait(1000, 2); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestRequestReplyTimeout(t *testing.T) {
@@ -73,13 +99,14 @@ func TestRequestReplyTimeout(t *testing.T) {
 	counter := testutil.NewAsyncCounter(10)
 
 	go func() {
-		msg := NewMsg(MsgTypeDefault, []byte("joey"))
-		if err := p1.SendAndWaitOnReply(msg, func(msg Message) error {
+		if err := p1.Send(NewMsg(MsgTypeDefault, []byte("joey"))).WaitUntil(TO(1), func(msg Message) error {
 			return nil
-		}, 1); err == ErrWaitTimeout {
+		}); err == ErrWaitTimeout {
 			counter.Count()
 		}
 	}()
 
-	counter.Wait(1, 2)
+	if err := counter.Wait(1, 2); err != nil {
+		t.Error(err)
+	}
 }

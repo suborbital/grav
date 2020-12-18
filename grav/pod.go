@@ -82,7 +82,7 @@ func newPod(busChan MsgChan, opts *podOpts) *Pod {
 // If the returned ticket is nil, it means the pod was unable to send
 // It is safe to call methods on a nil ticket, they will error with ErrNoTicket
 // This means error checking can be done on a chained call such as err := p.Send(msg).Wait(...)
-func (p *Pod) Send(msg Message) *MessageTicket {
+func (p *Pod) Send(msg Message) *MsgReceipt {
 	// check to see if the pod has died (aka disconnected)
 	if p.dead.Load().(bool) == true {
 		return nil
@@ -92,7 +92,7 @@ func (p *Pod) Send(msg Message) *MessageTicket {
 
 	p.busChan <- msg
 
-	t := &MessageTicket{
+	t := &MsgReceipt{
 		UUID: msg.UUID(),
 		pod:  p,
 	}
@@ -100,14 +100,18 @@ func (p *Pod) Send(msg Message) *MessageTicket {
 	return t
 }
 
+// ReplyTo sends a response to a message. The reply message's ticket is returned.
+func (p *Pod) ReplyTo(inReplyTo Message, msg Message) *MsgReceipt {
+	msg.SetReplyTo(inReplyTo.UUID())
+
+	return p.Send(msg)
+}
+
 // On sets the function to be called whenever this pod recieves a message from the bus. If nil is passed, the pod will ignore all messages.
 // Calling On multiple times causes the function to be overwritten. To recieve using two different functions, create two pods.
 func (p *Pod) On(onFunc MsgFunc) {
 	p.onFuncLock.Lock()
 	defer p.onFuncLock.Unlock()
-
-	// reset the message filter when the onFunc is changed
-	p.messageFilter = newMessageFilter()
 
 	p.setOnFunc(onFunc)
 }
@@ -117,13 +121,10 @@ func (p *Pod) OnType(msgType string, onFunc MsgFunc) {
 	p.onFuncLock.Lock()
 	defer p.onFuncLock.Unlock()
 
-	// reset the message filter when the onFunc is changed
-	p.messageFilter = newMessageFilter()
-	p.TypeInclusive = false // only allow the listed types
+	p.setOnFunc(onFunc)
 
 	p.FilterType(msgType, true)
-
-	p.setOnFunc(onFunc)
+	p.TypeInclusive = false // only allow the listed types
 }
 
 // Disconnect indicates to the bus that this pod is no longer needed and should be disconnected.
@@ -133,34 +134,6 @@ func (p *Pod) Disconnect() {
 	// The bus will close the busChan, which will cause the onFunc listener to quit.
 	p.dead.Store(true)
 	p.feedbackChan <- podFeedbackMsgDisconnect
-}
-
-// ReplyTo sends a response to a message. The reply message's ticket is returned.
-func (p *Pod) ReplyTo(inReplyTo Message, msg Message) *MessageTicket {
-	msg.SetReplyTo(inReplyTo.UUID())
-
-	return p.Send(msg)
-}
-
-// waitOnReply waits on a reply message to arrive at the pod and then calls onFunc with that message.
-// If the onFunc produces an error, it will be propogated to the caller.
-// If a non-nil timeout greater than 0 is passed, the function will return ErrWaitTimeout if the timeout elapses.
-func (p *Pod) waitOnReply(ticket *MessageTicket, timeout TimeoutFunc, onFunc MsgFunc) error {
-	var reply Message
-
-	if err := p.WaitUntil(timeout, func(msg Message) error {
-		if msg.ReplyTo() != ticket.UUID {
-			return ErrMsgNotWanted
-		}
-
-		reply = msg
-
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return onFunc(reply)
 }
 
 // ErrMsgNotWanted is used by WaitOn to determine if the current message is what's being waited on
@@ -223,10 +196,35 @@ func (p *Pod) WaitUntil(timeout TimeoutFunc, onFunc MsgFunc) error {
 	return onFuncErr
 }
 
+// waitOnReply waits on a reply message to arrive at the pod and then calls onFunc with that message.
+// If the onFunc produces an error, it will be propogated to the caller.
+// If a non-nil timeout greater than 0 is passed, the function will return ErrWaitTimeout if the timeout elapses.
+func (p *Pod) waitOnReply(ticket *MsgReceipt, timeout TimeoutFunc, onFunc MsgFunc) error {
+	var reply Message
+
+	if err := p.WaitUntil(timeout, func(msg Message) error {
+		if msg.ReplyTo() != ticket.UUID {
+			return ErrMsgNotWanted
+		}
+
+		reply = msg
+
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return onFunc(reply)
+}
+
 // setOnFunc sets the OnFunc. THIS DOES NOT LOCK. THE CALLER MUST LOCK.
 func (p *Pod) setOnFunc(on MsgFunc) {
+	// reset the message filter when the onFunc is changed
+	p.messageFilter = newMessageFilter()
+
 	p.onFunc = on
 
+	// request replay from the bus if needed
 	if on != nil {
 		p.opts.replayOnce.Do(func() {
 			if p.opts.WantsReplay {

@@ -56,7 +56,7 @@ func NewMsgWithParentID(msgType, parentID string, data []byte) Message {
 }
 
 // NewMsgReplyTo creates a new message in response to a previous message
-func NewMsgReplyTo(ticket MessageTicket, msgType string, data []byte) Message {
+func NewMsgReplyTo(ticket MsgReceipt, msgType string, data []byte) Message {
 	m := new(msgType, "", data)
 	m.SetReplyTo(ticket.UUID)
 

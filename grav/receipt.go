@@ -13,26 +13,25 @@ type MsgReceipt struct {
 	pod  *Pod
 }
 
-// Wait will block until a response to the message is recieved
-func (m *MsgReceipt) Wait(mfn MsgFunc) error {
+// WaitOn will block until a response to the message is recieved and passes it to the provided onFunc.
+// onFunc errors are propogated to the caller.
+func (m *MsgReceipt) WaitOn(onFunc MsgFunc) error {
+	return m.WaitUntil(nil, onFunc)
+}
+
+// WaitUntil will block until a response to the message is recieved and passes it to the provided onFunc.
+// ErrWaitTimeout is returned if the timeout elapses, onFunc errors are propogated to the caller.
+func (m *MsgReceipt) WaitUntil(timeout TimeoutFunc, onFunc MsgFunc) error {
 	if m == nil {
 		return ErrNoReceipt
 	}
 
-	return m.pod.waitOnReply(m, nil, mfn)
+	return m.pod.waitOnReply(m, timeout, onFunc)
 }
 
-// WaitUntil will block until a response to the message is recieved or the timeout elapses
-func (m *MsgReceipt) WaitUntil(timeout TimeoutFunc, mfn MsgFunc) error {
-	if m == nil {
-		return ErrNoReceipt
-	}
-
-	return m.pod.waitOnReply(m, timeout, mfn)
-}
-
-// Then will set the pod's OnFunc to the provided MsgFunc and set it to run when a reply is received
-func (m *MsgReceipt) Then(mfn MsgFunc) error {
+// OnReply will set the pod's OnFunc to the provided MsgFunc and set it to run asynchronously when a reply is received
+// onFunc errors are discarded.
+func (m *MsgReceipt) OnReply(mfn MsgFunc) error {
 	if m == nil {
 		return ErrNoReceipt
 	}

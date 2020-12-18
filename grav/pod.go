@@ -109,6 +109,8 @@ func (p *Pod) ReplyTo(inReplyTo Message, msg Message) *MsgReceipt {
 
 // On sets the function to be called whenever this pod recieves a message from the bus. If nil is passed, the pod will ignore all messages.
 // Calling On multiple times causes the function to be overwritten. To recieve using two different functions, create two pods.
+// Errors returned from the onFunc are interpreted as problems handling messages. Too many errors will result in the pod being disconnected.
+// Failed messages will be replayed when messages begin to succeed. Returning an error is inadvisable unless there is a real problem handling messages.
 func (p *Pod) On(onFunc MsgFunc) {
 	p.onFuncLock.Lock()
 	defer p.onFuncLock.Unlock()
@@ -116,7 +118,8 @@ func (p *Pod) On(onFunc MsgFunc) {
 	p.setOnFunc(onFunc)
 }
 
-// OnType sets the function to be called whenever this pod recieves a message and sets the pod's filter to only include certain message types
+// OnType sets the function to be called whenever this pod recieves a message and sets the pod's filter to only receive certain message types.
+// The same rules as `On` about error handling apply to OnType.
 func (p *Pod) OnType(msgType string, onFunc MsgFunc) {
 	p.onFuncLock.Lock()
 	defer p.onFuncLock.Unlock()

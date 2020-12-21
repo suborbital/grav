@@ -9,10 +9,10 @@ transport/http/%:
 	@$(MAKE) --no-print-directory -C transport/gravhttp $@
 
 transport/websocket:
-	@$(MAKE) --no-print-directory -C transport/gravwebsocket $@
+	@$(MAKE) --no-print-directory -C transport/websocket $@
 
 transport/websocket/%:
-	@$(MAKE) --no-print-directory -C transport/gravwebsocket $@
+	@$(MAKE) --no-print-directory -C transport/websocket $@
 
 deps:
 	go get -u -d ./...

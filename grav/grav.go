@@ -26,15 +26,14 @@ func New(opts ...OptionsModifier) *Grav {
 
 	options := newOptionsWithModifiers(opts...)
 
-	// the hub handles coordinating the transport and discovery plugins
-	hub := initHub(nodeUUID, options, options.Transport, options.Discovery)
-
 	g := &Grav{
 		NodeUUID: nodeUUID,
 		bus:      newMessageBus(),
 		logger:   options.Logger,
-		hub:      hub,
 	}
+
+	// the hub handles coordinating the transport and discovery plugins
+	g.hub = initHub(nodeUUID, options, options.Transport, options.Discovery, g.Connect())
 
 	return g
 }
@@ -56,7 +55,7 @@ func (g *Grav) ConnectWithReplay() *Pod {
 
 // ConnectEndpoint uses the configured transport to connect the bus to an external endpoint
 func (g *Grav) ConnectEndpoint(endpoint string) error {
-	return g.hub.ConnectEndpoint(endpoint)
+	return g.hub.connectEndpoint(endpoint, "")
 }
 
 // ConnectEndpointWithReplay uses the configured transport to connect the bus to an external endpoint

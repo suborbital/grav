@@ -47,7 +47,7 @@ func (t *Transport) Setup(opts *grav.TransportOpts) error {
 }
 
 // CreateConnection adds a websocket endpoint to emit messages to
-func (t *Transport) CreateConnection(endpoint, uuid string) (grav.Connection, error) {
+func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	endpointURL, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, err
@@ -57,15 +57,14 @@ func (t *Transport) CreateConnection(endpoint, uuid string) (grav.Connection, er
 		endpointURL.Scheme = "ws"
 	}
 
-	c, _, err := websocket.DefaultDialer.Dial(endpointURL.String(), nil)
+	c, resp, err := websocket.DefaultDialer.Dial(endpointURL.String(), nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "[transport-websocket] failed to Dial endpoint")
+		return nil, errors.Wrapf(err, "[transport-websocket] failed to Dial endpoint, status: %d", resp.StatusCode)
 	}
 
 	conn := &Conn{
-		conn:     c,
-		nodeUUID: uuid,
-		log:      t.log,
+		conn: c,
+		log:  t.log,
 	}
 
 	return conn, nil
@@ -94,40 +93,11 @@ func (t *Transport) HTTPHandlerFunc() http.HandlerFunc {
 		t.log.Debug("[transport-websocket] upgraded connection:", r.URL.String())
 
 		conn := &Conn{
-			conn:     c,
-			nodeUUID: "",
-			log:      t.log,
+			conn: c,
+			log:  t.log,
 		}
 
 		t.incomingConnFunc(conn)
-	}
-}
-
-func (c *Conn) start(uuid string, conn *websocket.Conn) {
-	// remove the connection from the pool upon closing
-	conn.SetCloseHandler(func(code int, text string) error {
-		c.log.Warn(fmt.Sprintf("[transport-websocket] connection closing with code: %d", code))
-		return nil
-	})
-
-	defer conn.Close()
-
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, terminating connection"))
-			break
-		}
-
-		c.log.Debug("[transport-websocket] recieved message via", uuid)
-
-		msg, err := grav.MsgFromBytes(message)
-		if err != nil {
-			c.log.Error(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes"))
-			continue
-		}
-
-		t.pod.Send(msg)
 	}
 }
 
@@ -143,13 +113,21 @@ func (c *Conn) Send(msg grav.Message) error {
 	c.log.Debug("[transport-websocket] sending message to connection", c.nodeUUID)
 
 	if err := c.conn.WriteMessage(grav.TransportMsgTypeUser, msgBytes); err != nil {
-		c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage"))
-		return grav.ErrConnectionClosed
+		if errors.Is(err, websocket.ErrCloseSent) {
+			return grav.ErrConnectionClosed
+		}
+
+		return errors.Wrap(err, "[transport-websocket] failed to WriteMessage")
 	}
 
 	c.log.Debug("[transport-websocket] sent message to connection", c.nodeUUID)
 
 	return nil
+}
+
+// UseReceiveFunc allows Grav to set a function that is used to send incoming message to the local instance
+func (c *Conn) UseReceiveFunc(recvFunc func(nodeUUID string, msg grav.Message)) {
+	c.recvFunc = recvFunc
 }
 
 // DoOutgoingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
@@ -182,6 +160,8 @@ func (c *Conn) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*grav.Tr
 		return nil, errors.Wrap(err, "failed to Unmarshal handshake ack")
 	}
 
+	c.nodeUUID = ack.UUID
+
 	return &ack, nil
 }
 
@@ -204,12 +184,6 @@ func (c *Conn) DoIncomingHandshake(handshakeAck *grav.TransportHandshakeAck) (*g
 		return nil, errors.Wrap(err, "failed to Unmarshal handshake")
 	}
 
-	if c.nodeUUID != "" && handshake.UUID != c.nodeUUID {
-		return nil, grav.ErrNodeUUIDMismatch
-	} else if c.nodeUUID == "" {
-		c.nodeUUID = handshake.UUID
-	}
-
 	ackJSON, err := json.Marshal(handshakeAck)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to Marshal handshake JSON")
@@ -223,5 +197,42 @@ func (c *Conn) DoIncomingHandshake(handshakeAck *grav.TransportHandshakeAck) (*g
 
 	c.log.Debug("[transport-websocket] sent handshake ack")
 
+	c.nodeUUID = handshake.UUID
+
 	return &handshake, nil
+}
+
+// Close closes the underlying connection
+func (c *Conn) Close() {
+	c.log.Debug("[transport-websocket] connection for", c.nodeUUID, "is closing")
+	c.conn.Close()
+}
+
+// Start begins the receiving of messages
+func (c *Conn) Start() {
+	c.conn.SetCloseHandler(func(code int, text string) error {
+		c.log.Warn(fmt.Sprintf("[transport-websocket] connection closing with code: %d", code))
+		return nil
+	})
+
+	go func() {
+		for {
+			_, message, err := c.conn.ReadMessage()
+			if err != nil {
+				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, terminating connection"))
+				break
+			}
+
+			c.log.Debug("[transport-websocket] recieved message via", c.nodeUUID)
+
+			msg, err := grav.MsgFromBytes(message)
+			if err != nil {
+				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes"))
+				continue
+			}
+
+			// send to the Grav instance
+			c.recvFunc(c.nodeUUID, msg)
+		}
+	}()
 }

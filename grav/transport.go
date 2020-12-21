@@ -21,6 +21,7 @@ var (
 type TransportOpts struct {
 	NodeUUID string
 	Port     string
+	URI      string
 	Logger   *vlog.Logger
 	Custom   interface{}
 }
@@ -28,15 +29,18 @@ type TransportOpts struct {
 // Transport represents a Grav transport plugin
 type Transport interface {
 	// Setup is a transport-specific function that allows bootstrapping
+	// Setup can block forever if needed; for example if a webserver is bring run
 	Setup(opts *TransportOpts) error
 	// CreateConnection connects to an endpoint and returns
-	CreateConnection(endpoint string, uuid string) (Connection, error)
+	CreateConnection(endpoint string) (Connection, error)
 	// UseConnectionFunc gives the transport a function to use when incoming connections are established
 	UseConnectionFunc(connFunc func(Connection))
 }
 
 // Connection represents a connection to another node
 type Connection interface {
+	// Called when the connection handshake is complete and the connection can actively start exchanging messages
+	Start()
 	// Send a message from the local instance to the connected node
 	Send(msg Message) error
 	// Give the connection a function to send incoming messages to the local instance

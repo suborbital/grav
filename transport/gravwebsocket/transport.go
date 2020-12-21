@@ -1,11 +1,10 @@
-package gravwebsocket
+package websocket
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
-	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
@@ -15,63 +14,43 @@ import (
 
 var upgrader = websocket.Upgrader{}
 
-// GravTransportWebsocket is a websocket manager that connects Grav nodes via standard websockets
-type GravTransportWebsocket struct {
-	opts        *grav.TransportOpts
-	pod         *grav.Pod
-	connections map[string]*websocket.Conn
+// Transport is a transport that connects Grav nodes via standard websockets
+type Transport struct {
+	opts *grav.TransportOpts
+	log  *vlog.Logger
 
-	log *vlog.Logger
+	incomingConnFunc func(grav.Connection)
+}
 
-	sync.RWMutex
+// Conn implements transport.Connection and represents a websocket connection
+type Conn struct {
+	nodeUUID string
+	conn     *websocket.Conn
+	log      *vlog.Logger
+
+	recvFunc func(nodeUUID string, msg grav.Message)
 }
 
 // New creates a new websocket transport
-func New() *GravTransportWebsocket {
-	g := &GravTransportWebsocket{
-		pod:         nil, // will be provided upon call to Serve
-		connections: map[string]*websocket.Conn{},
-		RWMutex:     sync.RWMutex{},
-	}
+func New() *Transport {
+	t := &Transport{}
 
-	return g
+	return t
 }
 
-// Serve creates a request server to handle incoming messages (not yet implemented)
-func (g *GravTransportWebsocket) Serve(opts *grav.TransportOpts, connect grav.ConnectFunc) error {
-	// serving independently is not yet supported, use the handler func methods
-	g.Lock()
-	defer g.Unlock()
-
-	g.opts = opts
-	g.log = opts.Logger
-
-	if g.pod == nil {
-		g.pod = connect()
-		g.pod.On(g.messageHandler())
-	}
+// Setup creates a request server to handle incoming messages (not yet implemented)
+func (t *Transport) Setup(opts *grav.TransportOpts) error {
+	t.opts = opts
+	t.log = opts.Logger
 
 	return nil
 }
 
-// ConnectEndpoint adds a websocket endpoint to emit messages to
-func (g *GravTransportWebsocket) ConnectEndpoint(endpoint string, connect grav.ConnectFunc) error {
-	return g.ConnectEndpointWithUUID("", endpoint, connect)
-}
-
-// ConnectEndpointWithUUID adds a websocket endpoint to emit messages to
-func (g *GravTransportWebsocket) ConnectEndpointWithUUID(uuid, endpoint string, connect grav.ConnectFunc) error {
-	g.Lock()
-	defer g.Unlock()
-
-	if _, exists := g.connections[uuid]; exists {
-		// nothing to be done, it's likely a re-discovered peer
-		return nil
-	}
-
+// CreateConnection adds a websocket endpoint to emit messages to
+func (t *Transport) CreateConnection(endpoint, uuid string) (grav.Connection, error) {
 	endpointURL, err := url.Parse(endpoint)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if endpointURL.Scheme == "" {
@@ -80,84 +59,54 @@ func (g *GravTransportWebsocket) ConnectEndpointWithUUID(uuid, endpoint string, 
 
 	c, _, err := websocket.DefaultDialer.Dial(endpointURL.String(), nil)
 	if err != nil {
-		return errors.Wrap(err, "[transport-websocket] failed to Dial endpoint")
+		return nil, errors.Wrap(err, "[transport-websocket] failed to Dial endpoint")
 	}
 
-	ackUUID, err := g.performOutgoingHandshake(c)
-	if err != nil {
-		c.Close()
-		return errors.Wrap(err, "[transport-websocket] failed to performOutgoingHandshake")
-	} else if uuid == "" {
-		uuid = ackUUID
-	} else if ackUUID != uuid {
-		c.Close()
-		return fmt.Errorf("[transport-websocket] handshake ack UUID (%s) did not match discovery UUID (%s)", ackUUID, uuid)
+	conn := &Conn{
+		conn:     c,
+		nodeUUID: uuid,
+		log:      t.log,
 	}
 
-	// runs as long as the connection is alive and handles removing the connection when it dies
-	go g.connectionHandler(uuid, c)
+	return conn, nil
+}
 
-	return nil
+// UseConnectionFunc allows Grav to set a function to be used when the transport gets a new connection
+func (t *Transport) UseConnectionFunc(connFunc func(grav.Connection)) {
+	t.incomingConnFunc = connFunc
 }
 
 // HTTPHandlerFunc returns an http.HandlerFunc for incoming connections
-func (g *GravTransportWebsocket) HTTPHandlerFunc() http.HandlerFunc {
+func (t *Transport) HTTPHandlerFunc() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if t.incomingConnFunc == nil {
+			t.log.ErrorString("[transport-websocket] incoming connection received, but no connFunc configured")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
 		c, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			g.log.Error(errors.Wrap(err, "[transport-websocket] failed to upgrade connection"))
+			t.log.Error(errors.Wrap(err, "[transport-websocket] failed to upgrade connection"))
 			return
 		}
 
-		g.log.Debug("[transport-websocket] upgraded connection:", r.URL.String())
+		t.log.Debug("[transport-websocket] upgraded connection:", r.URL.String())
 
-		uuid, err := g.performIncomingHandshake(c)
-		if err != nil {
-			g.log.Error(errors.Wrap(err, "[transport-websocket] faield to performIncomingHandshake on connection"))
-			c.Close()
-			return
+		conn := &Conn{
+			conn:     c,
+			nodeUUID: "",
+			log:      t.log,
 		}
 
-		g.connectionHandler(uuid, c)
+		t.incomingConnFunc(conn)
 	}
 }
 
-func (g *GravTransportWebsocket) addConnection(uuid string, conn *websocket.Conn) error {
-	g.Lock()
-	defer g.Unlock()
-
-	if _, exists := g.connections[uuid]; exists {
-		return fmt.Errorf("connection with UUID %s already exists", uuid)
-	}
-
-	g.connections[uuid] = conn
-
-	return nil
-}
-
-func (g *GravTransportWebsocket) removeConnection(uuid string) {
-	g.Lock()
-	defer g.Unlock()
-
-	delete(g.connections, uuid)
-}
-
-func (g *GravTransportWebsocket) connectionHandler(uuid string, conn *websocket.Conn) {
-	// add to the connection pool
-	if err := g.addConnection(uuid, conn); err != nil {
-		g.log.Debug("[transport-websocket] failed to add connection for", uuid, ":", err.Error())
-		conn.Close()
-		return
-	}
-
-	g.log.Info("[transport-websocket] added connection", uuid)
-
+func (c *Conn) start(uuid string, conn *websocket.Conn) {
 	// remove the connection from the pool upon closing
 	conn.SetCloseHandler(func(code int, text string) error {
-		g.log.Warn(fmt.Sprintf("[transport-websocket] connection closing with code: %d", code))
-
-		g.removeConnection(uuid)
-
+		c.log.Warn(fmt.Sprintf("[transport-websocket] connection closing with code: %d", code))
 		return nil
 	})
 
@@ -166,126 +115,113 @@ func (g *GravTransportWebsocket) connectionHandler(uuid string, conn *websocket.
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
-			g.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, terminating connection"))
-			g.removeConnection(uuid)
+			c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, terminating connection"))
 			break
 		}
 
-		g.log.Debug("[transport-websocket] recieved message via", uuid)
+		c.log.Debug("[transport-websocket] recieved message via", uuid)
 
 		msg, err := grav.MsgFromBytes(message)
 		if err != nil {
-			g.log.Error(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes"))
+			c.log.Error(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes"))
 			continue
 		}
 
-		g.pod.Send(msg)
+		t.pod.Send(msg)
 	}
 }
 
-func (g *GravTransportWebsocket) messageHandler() grav.MsgFunc {
-	return func(msg grav.Message) error {
-		g.RLock()
-		defer g.RUnlock()
-
-		msgBytes, err := msg.Marshal()
-		if err != nil {
-			// not exactly sure what to do here (we don't want this going into the dead letter queue)
-			g.log.Error(errors.Wrap(err, "[transport-websocket] failed to Marshal message"))
-			return nil
-		}
-
-		for uuid := range g.connections {
-			realUUID := uuid
-			conn := g.connections[realUUID]
-
-			go func() {
-				g.log.Debug("[transport-websocket] sending message to connection", realUUID)
-
-				if err := conn.WriteMessage(grav.TransportMsgTypeUser, msgBytes); err != nil {
-					g.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage"))
-					g.removeConnection(realUUID)
-					conn.Close()
-				}
-
-				g.log.Debug("[transport-websocket] sent message to connection", realUUID)
-			}()
-		}
-
+// Send sends a message to the connection
+func (c *Conn) Send(msg grav.Message) error {
+	msgBytes, err := msg.Marshal()
+	if err != nil {
+		// not exactly sure what to do here (we don't want this going into the dead letter queue)
+		c.log.Error(errors.Wrap(err, "[transport-websocket] failed to Marshal message"))
 		return nil
 	}
+
+	c.log.Debug("[transport-websocket] sending message to connection", c.nodeUUID)
+
+	if err := c.conn.WriteMessage(grav.TransportMsgTypeUser, msgBytes); err != nil {
+		c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage"))
+		return grav.ErrConnectionClosed
+	}
+
+	c.log.Debug("[transport-websocket] sent message to connection", c.nodeUUID)
+
+	return nil
 }
 
-// performOutgoingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
+// DoOutgoingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
 // so that it can be validated against the UUID that was provided in discovery (or if none was provided)
-func (g *GravTransportWebsocket) performOutgoingHandshake(c *websocket.Conn) (string, error) {
-	handshakeMsg := grav.TransportHandshake{
-		UUID: g.opts.NodeUUID,
-	}
-
-	handshakeJSON, err := json.Marshal(handshakeMsg)
+func (c *Conn) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*grav.TransportHandshakeAck, error) {
+	handshakeJSON, err := json.Marshal(handshake)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to Marshal handshake JSON")
+		return nil, errors.Wrap(err, "failed to Marshal handshake JSON")
 	}
 
-	g.log.Debug("[transport-websocket] sending handshake")
+	c.log.Debug("[transport-websocket] sending handshake")
 
-	if err := c.WriteMessage(grav.TransportMsgTypeHandshake, handshakeJSON); err != nil {
-		return "", errors.Wrap(err, "failed to WriteMessage handshake")
+	if err := c.conn.WriteMessage(grav.TransportMsgTypeHandshake, handshakeJSON); err != nil {
+		return nil, errors.Wrap(err, "failed to WriteMessage handshake")
 	}
 
-	mt, message, err := c.ReadMessage()
+	mt, message, err := c.conn.ReadMessage()
 	if err != nil {
-		return "", errors.Wrap(err, "failed to ReadMessage for handshake ack, terminating connection")
+		return nil, errors.Wrap(err, "failed to ReadMessage for handshake ack, terminating connection")
 	}
 
 	if mt != grav.TransportMsgTypeHandshake {
-		return "", errors.New("first message recieved was not handshake ack")
+		return nil, errors.New("first message recieved was not handshake ack")
 	}
 
-	g.log.Debug("[transport-websocket] recieved handshake ack")
+	c.log.Debug("[transport-websocket] recieved handshake ack")
 
 	ack := grav.TransportHandshakeAck{}
 	if err := json.Unmarshal(message, &ack); err != nil {
-		return "", errors.Wrap(err, "failed to Unmarshal handshake ack")
+		return nil, errors.Wrap(err, "failed to Unmarshal handshake ack")
 	}
 
-	return ack.UUID, nil
+	return &ack, nil
 }
 
-// performIncomingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
+// DoIncomingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
 // so that it can be validated against the UUID that was provided in discovery (or if none was provided)
-func (g *GravTransportWebsocket) performIncomingHandshake(c *websocket.Conn) (string, error) {
-	mt, message, err := c.ReadMessage()
+func (c *Conn) DoIncomingHandshake(handshakeAck *grav.TransportHandshakeAck) (*grav.TransportHandshake, error) {
+	mt, message, err := c.conn.ReadMessage()
 	if err != nil {
-		return "", errors.Wrap(err, "failed to ReadMessage for handshake, terminating connection")
+		return nil, errors.Wrap(err, "failed to ReadMessage for handshake, terminating connection")
 	}
 
 	if mt != grav.TransportMsgTypeHandshake {
-		return "", errors.New("first message recieved was not handshake")
+		return nil, errors.New("first message recieved was not handshake")
 	}
 
-	g.log.Debug("[transport-websocket] recieved handshake")
+	c.log.Debug("[transport-websocket] recieved handshake")
 
 	handshake := grav.TransportHandshake{}
 	if err := json.Unmarshal(message, &handshake); err != nil {
-		return "", errors.Wrap(err, "failed to Unmarshal handshake")
+		return nil, errors.Wrap(err, "failed to Unmarshal handshake")
 	}
 
-	ackMsg := grav.TransportHandshakeAck{
-		UUID: g.opts.NodeUUID,
+	if c.nodeUUID != "" && handshake.UUID != c.nodeUUID {
+		return nil, grav.ErrNodeUUIDMismatch
+	} else if c.nodeUUID == "" {
+		c.nodeUUID = handshake.UUID
 	}
 
-	ackJSON, err := json.Marshal(ackMsg)
+	ackJSON, err := json.Marshal(handshakeAck)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to Marshal handshake JSON")
+		return nil, errors.Wrap(err, "failed to Marshal handshake JSON")
 	}
 
-	g.log.Debug("[transport-websocket] sending handshake ack")
+	c.log.Debug("[transport-websocket] sending handshake ack")
 
-	if err := c.WriteMessage(grav.TransportMsgTypeHandshake, ackJSON); err != nil {
-		return "", errors.Wrap(err, "failed to WriteMessage handshake")
+	if err := c.conn.WriteMessage(grav.TransportMsgTypeHandshake, ackJSON); err != nil {
+		return nil, errors.Wrap(err, "failed to WriteMessage handshake ack")
 	}
 
-	return handshake.UUID, nil
+	c.log.Debug("[transport-websocket] sent handshake ack")
+
+	return &handshake, nil
 }

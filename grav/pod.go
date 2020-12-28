@@ -156,7 +156,7 @@ func (p *Pod) WaitOn(onFunc MsgFunc) error {
 
 // WaitUntil takes a function to be called whenever this pod recieves a message and blocks until that function returns
 // something other than ErrMsgNotWanted. WaitOn should be used if there is a need to wait for a particular message.
-// When the onFunc returns something other than ErrMsgNotWanted (such as nil or a different error), WaitOn will return and set
+// When the onFunc returns something other than ErrMsgNotWanted (such as nil or a different error), WaitUntil will return and set
 // the onFunc to nil. If an error other than ErrMsgNotWanted is returned from the onFunc, it will be propogated to the caller.
 // A timeout can be provided. If the timeout is non-nil and greater than 0, ErrWaitTimeout is returned if the time is exceeded.
 func (p *Pod) WaitUntil(timeout TimeoutFunc, onFunc MsgFunc) error {

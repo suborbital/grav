@@ -17,6 +17,15 @@ var (
 	ErrNodeUUIDMismatch = errors.New("handshake UUID did not match node UUID")
 )
 
+type (
+	// ReceiveFunc is a function that allows passing along a received message
+	ReceiveFunc func(msg Message)
+	// ConnectFunc is a function that provides a new Connection
+	ConnectFunc func(Connection)
+	// FindFunc allows a Transport to query Grav for an active connection for the given UUID
+	FindFunc func(uuid string) (Connection, bool)
+)
+
 // TransportOpts is a set of options for transports
 type TransportOpts struct {
 	NodeUUID string
@@ -30,21 +39,19 @@ type TransportOpts struct {
 type Transport interface {
 	// Setup is a transport-specific function that allows bootstrapping
 	// Setup can block forever if needed; for example if a webserver is bring run
-	Setup(opts *TransportOpts) error
+	Setup(opts *TransportOpts, connFunc ConnectFunc, findFunc FindFunc) error
 	// CreateConnection connects to an endpoint and returns
 	CreateConnection(endpoint string) (Connection, error)
-	// UseConnectionFunc gives the transport a function to use when incoming connections are established
-	UseConnectionFunc(connFunc func(Connection))
 }
 
 // Connection represents a connection to another node
 type Connection interface {
 	// Called when the connection handshake is complete and the connection can actively start exchanging messages
-	Start()
+	Start(recvFunc ReceiveFunc)
 	// Send a message from the local instance to the connected node
 	Send(msg Message) error
-	// Give the connection a function to send incoming messages to the local instance
-	UseReceiveFunc(recvFunc func(nodeUUID string, msg Message))
+	// CanReplace returns true if the connection can be replaced (i.e. is not a persistent connection like a websocket)
+	CanReplace() bool
 	// Initiate a handshake for an outgoing connection and return the remote Ack
 	DoOutgoingHandshake(handshake *TransportHandshake) (*TransportHandshakeAck, error)
 	// Wait for an incoming handshake and return the provided Ack to the remote connection

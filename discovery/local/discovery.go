@@ -15,14 +15,7 @@ type Discovery struct {
 	opts *grav.DiscoveryOpts
 	log  *vlog.Logger
 
-	discoveryFunc func(endpoint string, uuid string)
-}
-
-// New creates a new local discovery plugin
-func New() *Discovery {
-	g := &Discovery{}
-
-	return g
+	discoveryFunc grav.DiscoveryFunc
 }
 
 // payload is a discovery payload
@@ -32,10 +25,18 @@ type payload struct {
 	Path string `json:"path"`
 }
 
+// New creates a new local discovery plugin
+func New() *Discovery {
+	g := &Discovery{}
+
+	return g
+}
+
 // Start starts discovery
-func (d *Discovery) Start(opts *grav.DiscoveryOpts) error {
+func (d *Discovery) Start(opts *grav.DiscoveryOpts, discoveryFunc grav.DiscoveryFunc) error {
 	d.opts = opts
 	d.log = opts.Logger
+	d.discoveryFunc = discoveryFunc
 
 	d.log.Info("[discovery-local] starting discovery, advertising endpoint", opts.TransportPort, opts.TransportURI)
 
@@ -59,7 +60,7 @@ func (d *Discovery) Start(opts *grav.DiscoveryOpts) error {
 			return
 		}
 
-		endpoint := fmt.Sprintf("ws://%s:%s%s", peer.Address, payload.Port, payload.Path)
+		endpoint := fmt.Sprintf("%s:%s%s", peer.Address, payload.Port, payload.Path)
 
 		// send the discovery to Grav. Grav is responsible for ensuring uniqueness of the connections.
 		d.discoveryFunc(endpoint, payload.UUID)

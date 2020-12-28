@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
@@ -19,7 +20,7 @@ type Transport struct {
 	opts *grav.TransportOpts
 	log  *vlog.Logger
 
-	incomingConnFunc func(grav.Connection)
+	connectionFunc func(grav.Connection)
 }
 
 // Conn implements transport.Connection and represents a websocket connection
@@ -28,7 +29,7 @@ type Conn struct {
 	conn     *websocket.Conn
 	log      *vlog.Logger
 
-	recvFunc func(nodeUUID string, msg grav.Message)
+	recvFunc grav.ReceiveFunc
 }
 
 // New creates a new websocket transport
@@ -38,23 +39,26 @@ func New() *Transport {
 	return t
 }
 
-// Setup creates a request server to handle incoming messages (not yet implemented)
-func (t *Transport) Setup(opts *grav.TransportOpts) error {
+// Setup sets up the transport
+func (t *Transport) Setup(opts *grav.TransportOpts, connFunc grav.ConnectFunc, findFunc grav.FindFunc) error {
+	// independent serving is not yet implemented, use the HTTP handler
+
 	t.opts = opts
 	t.log = opts.Logger
+	t.connectionFunc = connFunc
 
 	return nil
 }
 
 // CreateConnection adds a websocket endpoint to emit messages to
 func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
+	if !strings.HasPrefix(endpoint, "ws") {
+		endpoint = fmt.Sprintf("ws://%s", endpoint)
+	}
+
 	endpointURL, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, err
-	}
-
-	if endpointURL.Scheme == "" {
-		endpointURL.Scheme = "ws"
 	}
 
 	c, resp, err := websocket.DefaultDialer.Dial(endpointURL.String(), nil)
@@ -70,15 +74,10 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	return conn, nil
 }
 
-// UseConnectionFunc allows Grav to set a function to be used when the transport gets a new connection
-func (t *Transport) UseConnectionFunc(connFunc func(grav.Connection)) {
-	t.incomingConnFunc = connFunc
-}
-
 // HTTPHandlerFunc returns an http.HandlerFunc for incoming connections
 func (t *Transport) HTTPHandlerFunc() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if t.incomingConnFunc == nil {
+		if t.connectionFunc == nil {
 			t.log.ErrorString("[transport-websocket] incoming connection received, but no connFunc configured")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -97,8 +96,39 @@ func (t *Transport) HTTPHandlerFunc() http.HandlerFunc {
 			log:  t.log,
 		}
 
-		t.incomingConnFunc(conn)
+		t.connectionFunc(conn)
 	}
+}
+
+// Start begins the receiving of messages
+func (c *Conn) Start(recvFunc grav.ReceiveFunc) {
+	c.recvFunc = recvFunc
+
+	c.conn.SetCloseHandler(func(code int, text string) error {
+		c.log.Warn(fmt.Sprintf("[transport-websocket] connection closing with code: %d", code))
+		return nil
+	})
+
+	go func() {
+		for {
+			_, message, err := c.conn.ReadMessage()
+			if err != nil {
+				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, terminating connection"))
+				break
+			}
+
+			c.log.Debug("[transport-websocket] recieved message via", c.nodeUUID)
+
+			msg, err := grav.MsgFromBytes(message)
+			if err != nil {
+				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes"))
+				continue
+			}
+
+			// send to the Grav instance
+			c.recvFunc(msg)
+		}
+	}()
 }
 
 // Send sends a message to the connection
@@ -125,9 +155,9 @@ func (c *Conn) Send(msg grav.Message) error {
 	return nil
 }
 
-// UseReceiveFunc allows Grav to set a function that is used to send incoming message to the local instance
-func (c *Conn) UseReceiveFunc(recvFunc func(nodeUUID string, msg grav.Message)) {
-	c.recvFunc = recvFunc
+// CanReplace returns true if the connection can be replaced
+func (c *Conn) CanReplace() bool {
+	return false
 }
 
 // DoOutgoingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
@@ -206,33 +236,4 @@ func (c *Conn) DoIncomingHandshake(handshakeAck *grav.TransportHandshakeAck) (*g
 func (c *Conn) Close() {
 	c.log.Debug("[transport-websocket] connection for", c.nodeUUID, "is closing")
 	c.conn.Close()
-}
-
-// Start begins the receiving of messages
-func (c *Conn) Start() {
-	c.conn.SetCloseHandler(func(code int, text string) error {
-		c.log.Warn(fmt.Sprintf("[transport-websocket] connection closing with code: %d", code))
-		return nil
-	})
-
-	go func() {
-		for {
-			_, message, err := c.conn.ReadMessage()
-			if err != nil {
-				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, terminating connection"))
-				break
-			}
-
-			c.log.Debug("[transport-websocket] recieved message via", c.nodeUUID)
-
-			msg, err := grav.MsgFromBytes(message)
-			if err != nil {
-				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes"))
-				continue
-			}
-
-			// send to the Grav instance
-			c.recvFunc(c.nodeUUID, msg)
-		}
-	}()
 }

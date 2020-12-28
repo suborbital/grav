@@ -2,12 +2,13 @@ package grav
 
 import "github.com/suborbital/vektor/vlog"
 
+// DiscoveryFunc is a function that allows a plugin to report a newly discovered node
+type DiscoveryFunc func(endpoint string, uuid string)
+
 // Discovery represents a discovery plugin
 type Discovery interface {
 	// Start is called to start the Discovery plugin
-	Start(*DiscoveryOpts) error
-	// UseDiscoveryFunc gives the plugin a function to call when a new peer is discovered
-	UseDiscoveryFunc(func(endpoint string, uuid string))
+	Start(*DiscoveryOpts, DiscoveryFunc) error
 }
 
 // DiscoveryOpts is a set of options for transports

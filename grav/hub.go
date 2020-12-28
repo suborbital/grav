@@ -44,9 +44,7 @@ func initHub(nodeUUID string, options *Options, tspt Transport, dscv Discovery, 
 		pod.On(h.outgoingMessageHandler())
 
 		go func() {
-			h.transport.UseConnectionFunc(h.handleIncomingConnection)
-
-			if err := h.transport.Setup(transportOpts); err != nil {
+			if err := h.transport.Setup(transportOpts, h.handleIncomingConnection, h.findConnection); err != nil {
 				options.Logger.Error(errors.Wrap(err, "failed to Setup transport"))
 			}
 		}()
@@ -60,9 +58,7 @@ func initHub(nodeUUID string, options *Options, tspt Transport, dscv Discovery, 
 			}
 
 			go func() {
-				h.discovery.UseDiscoveryFunc(h.discoveryHandler())
-
-				if err := h.discovery.Start(discoveryOpts); err != nil {
+				if err := h.discovery.Start(discoveryOpts, h.discoveryHandler()); err != nil {
 					options.Logger.Error(errors.Wrap(err, "failed to Start discovery"))
 				}
 			}()
@@ -72,7 +68,29 @@ func initHub(nodeUUID string, options *Options, tspt Transport, dscv Discovery, 
 	return h
 }
 
-// connectEndpoint allows the Grav instance owner to "manually" connect to an endpoint
+func (h *hub) discoveryHandler() func(endpoint string, uuid string) {
+	return func(endpoint string, uuid string) {
+		if uuid == h.nodeUUID {
+			h.log.Debug("discovered self, discarding")
+			return
+		}
+
+		// connectEndpoint does this check as well, but it's better to do it here as well
+		// as it reduces the number of extraneous outgoing handshakes that get attempted.
+		if existing, exists := h.findConnection(uuid); exists {
+			if !existing.CanReplace() {
+				h.log.Debug("encountered duplicate connection, discarding")
+				return
+			}
+		}
+
+		if err := h.connectEndpoint(endpoint, uuid); err != nil {
+			h.log.Error(errors.Wrap(err, "failed to connectEndpoint for discovered peer"))
+		}
+	}
+}
+
+// connectEndpoint creates a new outgoing connection
 func (h *hub) connectEndpoint(endpoint, uuid string) error {
 	if h.transport == nil {
 		return ErrTransportNotConfigured
@@ -90,27 +108,7 @@ func (h *hub) connectEndpoint(endpoint, uuid string) error {
 	return nil
 }
 
-func (h *hub) discoveryHandler() func(endpoint string, uuid string) {
-	return func(endpoint string, uuid string) {
-		if uuid == h.nodeUUID {
-			h.log.Debug("discovered self, discarding")
-			return
-		}
-
-		if h.hasConnection(uuid) {
-			h.log.Debug("discovered duplicate connection, ignoring")
-			return
-		}
-
-		if err := h.connectEndpoint(endpoint, uuid); err != nil {
-			h.log.Error(errors.Wrap(err, "failed to connectEndpoint for discovered peer"))
-		}
-	}
-}
-
 func (h *hub) setupOutgoingConnection(connection Connection, uuid string) {
-	connection.UseReceiveFunc(h.incomingMessageHandler())
-
 	handshake := &TransportHandshake{h.nodeUUID}
 
 	ack, err := connection.DoOutgoingHandshake(handshake)
@@ -134,18 +132,10 @@ func (h *hub) setupOutgoingConnection(connection Connection, uuid string) {
 		return
 	}
 
-	if h.hasConnection(uuid) {
-		h.log.Debug("encountered duplicate connection, discarding")
-		connection.Close()
-		return
-	}
-
-	h.addConnection(connection, uuid)
+	h.setupNewConnection(connection, uuid)
 }
 
 func (h *hub) handleIncomingConnection(connection Connection) {
-	connection.UseReceiveFunc(h.incomingMessageHandler())
-
 	ack := &TransportHandshakeAck{h.nodeUUID}
 
 	handshake, err := connection.DoIncomingHandshake(ack)
@@ -161,13 +151,22 @@ func (h *hub) handleIncomingConnection(connection Connection) {
 		return
 	}
 
-	if h.hasConnection(handshake.UUID) {
-		h.log.Debug("encountered duplicate connection, discarding")
-		connection.Close()
-		return
-	}
+	h.setupNewConnection(connection, handshake.UUID)
+}
 
-	h.addConnection(connection, handshake.UUID)
+func (h *hub) setupNewConnection(connection Connection, uuid string) {
+	// if an existing connection is found, check if it can be replaced and do so if possible
+	if existing, exists := h.findConnection(uuid); exists {
+		if !existing.CanReplace() {
+			connection.Close()
+			h.log.Debug("encountered duplicate connection, discarding")
+		} else {
+			existing.Close()
+			h.replaceConnection(connection, uuid)
+		}
+	} else {
+		h.addConnection(connection, uuid)
+	}
 }
 
 func (h *hub) outgoingMessageHandler() MsgFunc {
@@ -199,9 +198,9 @@ func (h *hub) outgoingMessageHandler() MsgFunc {
 	}
 }
 
-func (h *hub) incomingMessageHandler() func(nodeUUID string, msg Message) {
-	return func(nodeUUID string, msg Message) {
-		h.log.Debug("received message ", msg.UUID(), "from node", nodeUUID)
+func (h *hub) incomingMessageHandler(uuid string) ReceiveFunc {
+	return func(msg Message) {
+		h.log.Debug("received message ", msg.UUID(), "from node", uuid)
 
 		h.pod.Send(msg)
 	}
@@ -213,9 +212,22 @@ func (h *hub) addConnection(connection Connection, uuid string) {
 
 	h.log.Debug("adding connection for", uuid)
 
-	connection.Start()
+	connection.Start(h.incomingMessageHandler(uuid))
 
 	h.connections[uuid] = connection
+}
+
+func (h *hub) replaceConnection(newConnection Connection, uuid string) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	h.log.Debug("replacing connection for", uuid)
+
+	delete(h.connections, uuid)
+
+	newConnection.Start(h.incomingMessageHandler(uuid))
+
+	h.connections[uuid] = newConnection
 }
 
 func (h *hub) removeConnection(uuid string) {
@@ -227,11 +239,11 @@ func (h *hub) removeConnection(uuid string) {
 	delete(h.connections, uuid)
 }
 
-func (h *hub) hasConnection(uuid string) bool {
+func (h *hub) findConnection(uuid string) (Connection, bool) {
 	h.lock.RLock()
 	defer h.lock.RUnlock()
 
-	_, exists := h.connections[uuid]
+	conn, exists := h.connections[uuid]
 
-	return exists
+	return conn, exists
 }

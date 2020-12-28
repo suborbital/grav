@@ -1,6 +1,6 @@
 
 
 transport/http/test:
-	go run ./test/main.go
+	go run ./tester/main.go
 
 .PHONY: test

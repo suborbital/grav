@@ -11,4 +11,4 @@ Full documentation can be found on the [Grav docs site](https://grav.suborbital.
 
 Grav is currently in beta, and is being developed alongside (and is designed to integrate with) [Vektor](https://github.com/suborbital/vektor) and [Hive](https://github.com/suborbital/hive). It is also the messaging core that powers Suborbital's flagship project, [Atmo](https://github.com/suborbital/atmo).
 
-Copyright Suborbital contributors 2020.
+Copyright Suborbital contributors 2021.

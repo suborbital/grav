@@ -247,5 +247,5 @@ func (c *Conn) WriteMessage(messageType int, data []byte) error {
 	c.cLock.Lock()
 	defer c.cLock.Unlock()
 
-	return c.conn.WriteMessage(grav.TransportMsgTypeHandshake, data)
+	return c.conn.WriteMessage(messageType, data)
 }

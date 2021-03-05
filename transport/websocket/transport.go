@@ -61,9 +61,9 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 		return nil, err
 	}
 
-	c, resp, err := websocket.DefaultDialer.Dial(endpointURL.String(), nil)
+	c, _, err := websocket.DefaultDialer.Dial(endpointURL.String(), nil)
 	if err != nil {
-		return nil, errors.Wrapf(err, "[transport-websocket] failed to Dial endpoint, status: %d", resp.StatusCode)
+		return nil, errors.Wrapf(err, "[transport-websocket] failed to Dial endpoint")
 	}
 
 	conn := &Conn{

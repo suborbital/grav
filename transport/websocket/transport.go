@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
@@ -26,8 +27,10 @@ type Transport struct {
 // Conn implements transport.Connection and represents a websocket connection
 type Conn struct {
 	nodeUUID string
-	conn     *websocket.Conn
 	log      *vlog.Logger
+
+	conn  *websocket.Conn
+	cLock sync.Mutex
 
 	recvFunc grav.ReceiveFunc
 }
@@ -67,8 +70,9 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	}
 
 	conn := &Conn{
-		conn: c,
-		log:  t.log,
+		log:   t.log,
+		conn:  c,
+		cLock: sync.Mutex{},
 	}
 
 	return conn, nil
@@ -142,7 +146,7 @@ func (c *Conn) Send(msg grav.Message) error {
 
 	c.log.Debug("[transport-websocket] sending message to connection", c.nodeUUID)
 
-	if err := c.conn.WriteMessage(grav.TransportMsgTypeUser, msgBytes); err != nil {
+	if err := c.WriteMessage(grav.TransportMsgTypeUser, msgBytes); err != nil {
 		if errors.Is(err, websocket.ErrCloseSent) {
 			return grav.ErrConnectionClosed
 		}
@@ -170,7 +174,7 @@ func (c *Conn) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*grav.Tr
 
 	c.log.Debug("[transport-websocket] sending handshake")
 
-	if err := c.conn.WriteMessage(grav.TransportMsgTypeHandshake, handshakeJSON); err != nil {
+	if err := c.WriteMessage(grav.TransportMsgTypeHandshake, handshakeJSON); err != nil {
 		return nil, errors.Wrap(err, "failed to WriteMessage handshake")
 	}
 
@@ -221,7 +225,7 @@ func (c *Conn) DoIncomingHandshake(handshakeAck *grav.TransportHandshakeAck) (*g
 
 	c.log.Debug("[transport-websocket] sending handshake ack")
 
-	if err := c.conn.WriteMessage(grav.TransportMsgTypeHandshake, ackJSON); err != nil {
+	if err := c.WriteMessage(grav.TransportMsgTypeHandshake, ackJSON); err != nil {
 		return nil, errors.Wrap(err, "failed to WriteMessage handshake ack")
 	}
 
@@ -236,4 +240,12 @@ func (c *Conn) DoIncomingHandshake(handshakeAck *grav.TransportHandshakeAck) (*g
 func (c *Conn) Close() {
 	c.log.Debug("[transport-websocket] connection for", c.nodeUUID, "is closing")
 	c.conn.Close()
+}
+
+// WriteMessage is a concurrent-safe wrapper around the websocket WriteMessage
+func (c *Conn) WriteMessage(messageType int, data []byte) error {
+	c.cLock.Lock()
+	defer c.cLock.Unlock()
+
+	return c.conn.WriteMessage(grav.TransportMsgTypeHandshake, data)
 }

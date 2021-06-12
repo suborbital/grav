@@ -17,7 +17,7 @@ func newMessageBus() *messageBus {
 	b := &messageBus{
 		busChan: make(chan Message, defaultBusChanSize),
 		pool:    newConnectionPool(),
-		buffer:  newMsgBuffer(defaultBufferSize),
+		buffer:  NewMsgBuffer(defaultBufferSize),
 	}
 
 	b.start()

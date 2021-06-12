@@ -19,7 +19,7 @@ type MsgBuffer struct {
 	lock       sync.RWMutex
 }
 
-func newMsgBuffer(limit int) *MsgBuffer {
+func NewMsgBuffer(limit int) *MsgBuffer {
 	m := &MsgBuffer{
 		msgs:       map[string]Message{},
 		order:      []string{},

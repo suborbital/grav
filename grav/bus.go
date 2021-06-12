@@ -9,7 +9,7 @@ const (
 type messageBus struct {
 	busChan MsgChan
 	pool    *connectionPool
-	buffer  *msgBuffer
+	buffer  *MsgBuffer
 }
 
 // newMessageBus creates a new messageBus

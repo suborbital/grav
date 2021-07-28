@@ -35,11 +35,11 @@ func main() {
 	})
 
 	go func() {
-		<-time.After(time.Second * time.Duration(10))
+		<-time.After(time.Second * time.Duration(5))
 		fmt.Println("sending 1")
 		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, world")))
 
-		<-time.After(time.Second * time.Duration(10))
+		<-time.After(time.Second * time.Duration(5))
 		fmt.Println("sending 2")
 		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, again")))
 	}()

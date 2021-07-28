@@ -13,8 +13,10 @@ const (
 
 // ErrConnectionClosed and others are transport and connection related errors
 var (
-	ErrConnectionClosed = errors.New("connection was closed")
-	ErrNodeUUIDMismatch = errors.New("handshake UUID did not match node UUID")
+	ErrConnectionClosed    = errors.New("connection was closed")
+	ErrNodeUUIDMismatch    = errors.New("handshake UUID did not match node UUID")
+	ErrNotBridgeTransport  = errors.New("transport is not a bridge")
+	ErrBridgeOnlyTransport = errors.New("transport only supports bridge connection")
 )
 
 type (
@@ -40,8 +42,12 @@ type Transport interface {
 	// Setup is a transport-specific function that allows bootstrapping
 	// Setup can block forever if needed; for example if a webserver is bring run
 	Setup(opts *TransportOpts, connFunc ConnectFunc, findFunc FindFunc) error
-	// CreateConnection connects to an endpoint and returns
+	// CreateConnection connects to an endpoint and returns the Connection
 	CreateConnection(endpoint string) (Connection, error)
+	// IsBridge returns true if the Transport is connecting to a single bridge, a la NATS
+	IsBridge() bool
+	// CreateBridgeConnection connects to a topic and returns the BridgeConnection
+	CreateBridgeConnection(topic string) (BridgeConnection, error)
 }
 
 // Connection represents a connection to another node
@@ -56,6 +62,14 @@ type Connection interface {
 	DoOutgoingHandshake(handshake *TransportHandshake) (*TransportHandshakeAck, error)
 	// Wait for an incoming handshake and return the provided Ack to the remote connection
 	DoIncomingHandshake(handshakeAck *TransportHandshakeAck) (*TransportHandshake, error)
+	// Close requests that the Connection close itself
+	Close()
+}
+
+// BridgeConnection is a connection to something via a bridge such as a topic
+type BridgeConnection interface {
+	// Called when the connection can actively start exchanging messages
+	Start(pod *Pod)
 	// Close requests that the Connection close itself
 	Close()
 }

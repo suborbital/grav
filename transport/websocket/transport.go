@@ -78,6 +78,16 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	return conn, nil
 }
 
+// IsBridge returns true if the transport is a bridge
+func (t *Transport) IsBridge() bool {
+	return false
+}
+
+// CreateBridgeConnection connects to a topic if the transport is a bridge
+func (t *Transport) CreateBridgeConnection(topic string) (grav.BridgeConnection, error) {
+	return nil, grav.ErrNotBridgeTransport
+}
+
 // HTTPHandlerFunc returns an http.HandlerFunc for incoming connections
 func (t *Transport) HTTPHandlerFunc() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

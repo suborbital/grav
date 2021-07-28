@@ -78,6 +78,16 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	return ept, nil
 }
 
+// IsBridge returns true if the transport is a bridge
+func (t *Transport) IsBridge() bool {
+	return false
+}
+
+// CreateBridgeConnection connects to a topic if the transport is a bridge
+func (t *Transport) CreateBridgeConnection(topic string) (grav.BridgeConnection, error) {
+	return nil, grav.ErrNotBridgeTransport
+}
+
 // HandlerFunc returns a vk handlerFunc for incoming messages
 // use HTTPHAndlerFunc for a regular Go http.HandlerFunc
 func (t *Transport) HandlerFunc() vk.HandlerFunc {

@@ -1,0 +1,6 @@
+dotVersionFiles:
+
+preMakeTargets:
+  - test
+
+postMakeTargets:

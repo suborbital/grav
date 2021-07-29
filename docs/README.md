@@ -2,7 +2,9 @@
 
 ### Welcome to the Grav Guide
 
-Grav is an embedded distributed messaging mesh for Go applications. Grav allows interconnected components of your systems to communicate effectively in a reliable, asynchronous manner. HTTP and RPC are hard to scale well in modern distributed systems, but Grav is designed to be performant and resilient in various distributed environments.
+Grav is an embedded distributed messaging library for Go applications. Grav allows interconnected components of your system to communicate effectively in a reliable, asynchronous manner. HTTP and RPC are hard to scale well in modern distributed systems, so we created Grav to add a performant and resilient messaging system to various distributed environments.
+
+Grav's main purpose is to act as a flexible abstraction that allows your application to discover and communicate using a variety of protocols without needing to re-write any code.
 
 This project has several goals and a few non-goals:
 
@@ -16,9 +18,4 @@ Goals:
 
 Non-Goals:
 
-* Replace a brokered message queue for large-scale systems.
-* Have extremely high throughput capabilities.
 * Support every type of messaging pattern.
-
-Grav is designed with a very narrow purpose, and is not meant to replace more general-purpose systems such as RabbitMQ, Kafka, or others
-

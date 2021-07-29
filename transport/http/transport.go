@@ -47,6 +47,11 @@ func New() *Transport {
 	return g
 }
 
+// Type returns the transport's type
+func (t *Transport) Type() grav.TransportType {
+	return grav.TransportTypeMesh
+}
+
 // Setup sets the transport up for connections
 func (t *Transport) Setup(opts *grav.TransportOpts, connFunc grav.ConnectFunc, findFunc grav.FindFunc) error {
 	// serving independently is not yet supported, use the handler func methods
@@ -76,6 +81,11 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	}
 
 	return ept, nil
+}
+
+// ConnectBridgeTopic connects to a topic if the transport is a bridge
+func (t *Transport) ConnectBridgeTopic(topic string) (grav.TopicConnection, error) {
+	return nil, grav.ErrNotBridgeTransport
 }
 
 // HandlerFunc returns a vk handlerFunc for incoming messages

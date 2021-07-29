@@ -20,11 +20,12 @@
   * [Grav Instance Options](usage/getting-started/grav-instance-options.md)
 * [Advanced](usage/advanced.md)
 
-## Meshing
+## Networked Usage
 
-* [Transports](meshing/transports/README.md)
-  * [HTTP Transport](meshing/transports/http-transport.md)
-  * [Websocket Transport](meshing/transports/websocket-transport.md)
-* [Discovery](meshing/discovery/README.md)
-  * [Local Network Discovery](meshing/discovery/local-network-discovery.md)
+* [Transports](networking/transports/README.md)
+  * [HTTP Transport](networking/transports/http-transport.md)
+  * [Websocket Transport](networking/transports/websocket-transport.md)
+  * [NATS Transport](networking/transports/nats-transport.md)
+* [Discovery](networking/discovery/README.md)
+  * [Local Network Discovery](networking/discovery/local-network-discovery.md)
 

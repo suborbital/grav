@@ -1,6 +1,6 @@
 ![logo_transparent](https://user-images.githubusercontent.com/5942370/88551418-d623ea00-cff0-11ea-87d8-e9b94174aaa2.png)
 
-Grav is an embedded distributed messaging library for Go applications. Grav allows interconnected components of your systems to communicate effectively in a reliable, asynchronous manner. HTTP and RPC are hard to scale well in modern distributed systems, and Grav is designed to be performant and resilient in various distributed environments.
+Grav is an embedded distributed messaging library for Go applications. Grav allows interconnected components of your system to communicate effectively in a reliable, asynchronous manner. HTTP and RPC are hard to scale well in modern distributed systems, so we created Grav to add a performant and resilient messaging system to various distributed environments.
 
 Grav's main purpose is to act as a flexible abstraction that allows your application to discover and communicate using a variety of protocols without needing to re-write any code.
 
@@ -11,6 +11,6 @@ Full documentation can be found on the [Grav docs site](https://grav.suborbital.
 
 ## Project status
 
-Grav is currently in beta, and is being developed alongside (and is designed to integrate with) [Vektor](https://github.com/suborbital/vektor) and [Hive](https://github.com/suborbital/hive). It is also the messaging core that powers Suborbital's flagship project, [Atmo](https://github.com/suborbital/atmo).
+Grav is currently in beta, and is being developed alongside (and is designed to integrate with) [Vektor](https://github.com/suborbital/vektor) and [Reactr](https://github.com/suborbital/reactr). It is also the messaging core that powers Suborbital's flagship project, [Atmo](https://github.com/suborbital/atmo).
 
 Copyright Suborbital contributors 2021.

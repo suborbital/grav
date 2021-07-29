@@ -8,8 +8,8 @@ There are two types of Transports; mesh and bridge.
 
 Grav has three first-party transports:
 
-* HTTP, a simplistic transport using HTTP requests to emit messages.
-* Websocket, a streaming transport based on standard websockets.
+* HTTP, a simple mesh transport using HTTP requests to emit messages.
+* Websocket, a streaming mesh transport based on standard websockets.
 * NATS, a streaming bridge transport based on the popular NATS server.
 
 Grav transports are designed as plugins, and as such anyone can create one for their own purposes. Transports for additional platforms such as Kafka are planned. See the [transport](https://github.com/suborbital/grav/blob/main/transport) directory to see example transport code.

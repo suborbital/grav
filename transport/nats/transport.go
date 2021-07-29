@@ -19,7 +19,7 @@ type Transport struct {
 	connectionFunc func(grav.Connection)
 }
 
-// Conn implements transport.BridgeConnection and represents a subscribe/send pair for a NATS topic
+// Conn implements transport.TopicConnection and represents a subscribe/send pair for a NATS topic
 type Conn struct {
 	topic string
 	log   *vlog.Logger
@@ -30,10 +30,10 @@ type Conn struct {
 }
 
 // New creates a new websocket transport
-func New() (*Transport, error) {
+func New(endpoint string) (*Transport, error) {
 	t := &Transport{}
 
-	nc, err := nats.Connect(nats.DefaultURL)
+	nc, err := nats.Connect(endpoint)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to nats.Connect")
 	}
@@ -41,6 +41,11 @@ func New() (*Transport, error) {
 	t.serverConn = nc
 
 	return t, nil
+}
+
+// Type returns the transport's type
+func (t *Transport) Type() grav.TransportType {
+	return grav.TransportTypeBridge
 }
 
 // Setup sets up the transport
@@ -57,13 +62,8 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	return nil, grav.ErrBridgeOnlyTransport
 }
 
-// IsBridge returns true if the transport is a bridge
-func (t *Transport) IsBridge() bool {
-	return true
-}
-
-// CreateBridgeConnection connects to a topic if the transport is a bridge
-func (t *Transport) CreateBridgeConnection(topic string) (grav.BridgeConnection, error) {
+// ConnectBridgeTopic connects to a topic if the transport is a bridge
+func (t *Transport) ConnectBridgeTopic(topic string) (grav.TopicConnection, error) {
 	sub, err := t.serverConn.SubscribeSync(topic)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to SubscribeSync")

@@ -16,23 +16,23 @@ type hub struct {
 	pod         *Pod
 	connectFunc func() *Pod
 
-	connections       map[string]Connection
-	bridgeConnections map[string]BridgeConnection
+	connections      map[string]Connection
+	topicConnections map[string]TopicConnection
 
 	lock sync.RWMutex
 }
 
 func initHub(nodeUUID string, options *Options, tspt Transport, dscv Discovery, connectFunc func() *Pod) *hub {
 	h := &hub{
-		nodeUUID:          nodeUUID,
-		transport:         tspt,
-		discovery:         dscv,
-		log:               options.Logger,
-		pod:               connectFunc(),
-		connectFunc:       connectFunc,
-		connections:       map[string]Connection{},
-		bridgeConnections: map[string]BridgeConnection{},
-		lock:              sync.RWMutex{},
+		nodeUUID:         nodeUUID,
+		transport:        tspt,
+		discovery:        dscv,
+		log:              options.Logger,
+		pod:              connectFunc(),
+		connectFunc:      connectFunc,
+		connections:      map[string]Connection{},
+		topicConnections: map[string]TopicConnection{},
+		lock:             sync.RWMutex{},
 	}
 
 	// start transport, then discovery if each have been configured (can have transport but no discovery)
@@ -100,7 +100,7 @@ func (h *hub) connectEndpoint(endpoint, uuid string) error {
 		return ErrTransportNotConfigured
 	}
 
-	if h.transport.IsBridge() {
+	if h.transport.Type() == TransportTypeBridge {
 		return ErrBridgeOnlyTransport
 	}
 
@@ -122,18 +122,18 @@ func (h *hub) connectBridgeTopic(topic string) error {
 		return ErrTransportNotConfigured
 	}
 
-	if !h.transport.IsBridge() {
+	if h.transport.Type() != TransportTypeBridge {
 		return ErrNotBridgeTransport
 	}
 
 	h.log.Debug("connecting to topic", topic)
 
-	conn, err := h.transport.CreateBridgeConnection(topic)
+	conn, err := h.transport.ConnectBridgeTopic(topic)
 	if err != nil {
 		return errors.Wrap(err, "failed to transport.CreateConnection")
 	}
 
-	h.addBridgeConnection(conn, topic)
+	h.addTopicConnection(conn, topic)
 
 	return nil
 }
@@ -247,7 +247,7 @@ func (h *hub) addConnection(connection Connection, uuid string) {
 	h.connections[uuid] = connection
 }
 
-func (h *hub) addBridgeConnection(connection BridgeConnection, topic string) {
+func (h *hub) addTopicConnection(connection TopicConnection, topic string) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
@@ -255,7 +255,7 @@ func (h *hub) addBridgeConnection(connection BridgeConnection, topic string) {
 
 	connection.Start(h.connectFunc())
 
-	h.bridgeConnections[topic] = connection
+	h.topicConnections[topic] = connection
 }
 
 func (h *hub) replaceConnection(newConnection Connection, uuid string) {

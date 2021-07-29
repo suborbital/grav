@@ -14,7 +14,7 @@ import (
 func main() {
 	logger := vlog.Default(vlog.Level(vlog.LogLevelDebug))
 
-	gnats, err := nats.New()
+	gnats, err := nats.New("nats://localhost:4222")
 	if err != nil {
 		log.Fatal(errors.Wrap(err, "failed to nats.New"))
 	}

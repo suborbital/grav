@@ -28,20 +28,24 @@ func main() {
 		log.Fatal(errors.Wrap(err, "failed to ConnectTopic"))
 	}
 
+	if err := g.ConnectBridgeTopic("grav.reply"); err != nil {
+		log.Fatal(errors.Wrap(err, "failed to ConnectTopic"))
+	}
+
 	pod := g.Connect()
 	pod.On(func(msg grav.Message) error {
-		fmt.Println("received something:", string(msg.Data()))
+		fmt.Println("received something:", string(msg.Data()), msg.Type())
 		return nil
 	})
 
 	go func() {
 		<-time.After(time.Second * time.Duration(5))
 		fmt.Println("sending 1")
-		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, world")))
+		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("world")))
 
 		<-time.After(time.Second * time.Duration(5))
 		fmt.Println("sending 2")
-		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("hello, again")))
+		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("again")))
 	}()
 
 	<-time.After(time.Minute)

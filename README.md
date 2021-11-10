@@ -4,7 +4,7 @@ Grav is an embedded distributed messaging library for Go applications. Grav allo
 
 Grav's main purpose is to act as a flexible abstraction that allows your application to discover and communicate using a variety of protocols without needing to re-write any code.
 
-Since Grav is embedded, it is instantiated as a `grav.Grav` object which your application code uses to send and recieve messages. Messages can be sent in-process (such as between Goroutines), or to other nodes via **transport plugins** such as [Websocket](./transport/websocket/README.md) and [NATS](./transport/nats/README.md). Transport plugins extend the Grav core to become a networked distributed messaging system. Grav nodes can also be configured to automatically discover each other using **discovery plugins**. Grav can operate as a decentralized mesh or integrate with centralized streaming platforms, making it extremely flexible.
+Grav messages can be sent in-process (such as between Goroutines), or to other nodes via **transport plugins** such as [Websocket](./transport/websocket/README.md) and [NATS](./transport/nats/README.md). Transport plugins extend the core Grav bus to become a networked distributed messaging system. Grav nodes can also be configured to automatically discover each other using **discovery plugins**. Grav can operate as a decentralized mesh or integrate with centralized streaming platforms, making it extremely flexible.
 
 ## Documentation
 Full documentation can be found on the [Grav docs site](https://grav.suborbital.dev).

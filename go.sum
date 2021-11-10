@@ -55,6 +55,7 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/schollz/peerdiscovery v1.6.9 h1:yvCaBpw71IrceSonGuhx+r4It2//rgaLc4WPoUDgMRc=
 github.com/schollz/peerdiscovery v1.6.9/go.mod h1:DEb4s4IogA0tn08BDJtwfaSddzw23wY2yttX6utSxOg=
+github.com/sethvargo/go-envconfig v0.3.2 h1:277Lb2iTpUZjUZu1qLoLa/aetwvtZbKh8wNWXmc6dSk=
 github.com/sethvargo/go-envconfig v0.3.2/go.mod h1:XZ2JRR7vhlBEO5zMmOpLgUhgYltqYqq4d4tKagtPUv0=
 github.com/sethvargo/go-envconfig v0.4.0 h1:HuQJWWQ46FYqGvMyGwxfOEoDNeAxp2HErYyWMkSeNIk=
 github.com/sethvargo/go-envconfig v0.4.0/go.mod h1:XZ2JRR7vhlBEO5zMmOpLgUhgYltqYqq4d4tKagtPUv0=

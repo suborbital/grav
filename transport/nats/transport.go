@@ -9,7 +9,7 @@ import (
 	"github.com/suborbital/vektor/vlog"
 )
 
-// Transport is a transport that connects Grav nodes via standard websockets
+// Transport is a transport that connects Grav nodes via NATS
 type Transport struct {
 	opts *grav.TransportOpts
 	log  *vlog.Logger
@@ -29,7 +29,7 @@ type Conn struct {
 	pubFn func(data []byte) error
 }
 
-// New creates a new websocket transport
+// New creates a new NATS transport
 func New(endpoint string) (*Transport, error) {
 	t := &Transport{}
 

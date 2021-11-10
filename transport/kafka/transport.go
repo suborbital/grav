@@ -9,7 +9,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// Transport is a transport that connects Grav nodes via standard websockets
+// Transport is a transport that connects Grav nodes via kafka
 type Transport struct {
 	opts *grav.TransportOpts
 	log  *vlog.Logger
@@ -19,7 +19,7 @@ type Transport struct {
 	connectionFunc func(grav.Connection)
 }
 
-// Conn implements transport.TopicConnection and represents a subscribe/send pair for a NATS topic
+// Conn implements transport.TopicConnection and represents a subscribe/send pair for a Kafka topic
 type Conn struct {
 	topic string
 	log   *vlog.Logger
@@ -28,7 +28,7 @@ type Conn struct {
 	conn *kgo.Client
 }
 
-// New creates a new websocket transport
+// New creates a new Kafka transport
 func New(endpoint string) (*Transport, error) {
 	t := &Transport{}
 

@@ -58,31 +58,6 @@ func TestGravBench(t *testing.T) {
 
 	counter := testutil.NewAsyncCounter(1500000)
 
-	for i := 0; i < 100000; i++ {
-		p := g.Connect()
-
-		p.On(func(msg Message) error {
-			counter.Count()
-			return nil
-		})
-	}
-
-	pod := g.Connect()
-
-	for i := 0; i < 10; i++ {
-		pod.Send(NewMsg(MsgTypeDefault, []byte(fmt.Sprintf("hello, world %d", i))))
-	}
-
-	if err := counter.Wait(1000000, 3); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestGravBenchPt2(t *testing.T) {
-	g := New()
-
-	counter := testutil.NewAsyncCounter(1500000)
-
 	for i := 0; i < 10; i++ {
 		p := g.Connect()
 

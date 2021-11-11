@@ -1,44 +1,38 @@
-package nats
+package kafka
 
 import (
-	"time"
+	"context"
 
-	"github.com/nats-io/nats.go"
 	"github.com/pkg/errors"
 	"github.com/suborbital/grav/grav"
 	"github.com/suborbital/vektor/vlog"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// Transport is a transport that connects Grav nodes via NATS
+// Transport is a transport that connects Grav nodes via kafka
 type Transport struct {
 	opts *grav.TransportOpts
 	log  *vlog.Logger
 
-	serverConn *nats.Conn
+	endpoint string
 
 	connectionFunc func(grav.Connection)
 }
 
-// Conn implements transport.TopicConnection and represents a subscribe/send pair for a NATS topic
+// Conn implements transport.TopicConnection and represents a subscribe/send pair for a Kafka topic
 type Conn struct {
 	topic string
 	log   *vlog.Logger
 	pod   *grav.Pod
 
-	sub   *nats.Subscription
-	pubFn func(data []byte) error
+	conn *kgo.Client
 }
 
-// New creates a new NATS transport
+// New creates a new Kafka transport
 func New(endpoint string) (*Transport, error) {
 	t := &Transport{}
 
-	nc, err := nats.Connect(endpoint)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to nats.Connect")
-	}
-
-	t.serverConn = nc
+	t.endpoint = endpoint
 
 	return t, nil
 }
@@ -64,20 +58,20 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 
 // ConnectBridgeTopic connects to a topic if the transport is a bridge
 func (t *Transport) ConnectBridgeTopic(topic string) (grav.TopicConnection, error) {
-	sub, err := t.serverConn.SubscribeSync(topic)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to SubscribeSync")
-	}
+	client, err := kgo.NewClient(
+		kgo.SeedBrokers(t.endpoint),
+		kgo.ConsumeTopics(topic),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()),
+	)
 
-	pubFn := func(data []byte) error {
-		return t.serverConn.Publish(topic, data)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to NewClient")
 	}
 
 	conn := &Conn{
 		topic: topic,
 		log:   t.log,
-		sub:   sub,
-		pubFn: pubFn,
+		conn:  client,
 	}
 
 	return conn, nil
@@ -93,8 +87,9 @@ func (c *Conn) Start(pod *grav.Pod) {
 			return errors.Wrap(err, "failed to Marshal message")
 		}
 
-		if err := c.pubFn(msgBytes); err != nil {
-			return errors.Wrap(err, "failed to pubFn")
+		record := &kgo.Record{Topic: c.topic, Value: msgBytes}
+		if err := c.conn.ProduceSync(context.Background(), record).FirstErr(); err != nil {
+			return errors.Wrap(err, "failed to ProduceSync")
 		}
 
 		return nil
@@ -102,34 +97,34 @@ func (c *Conn) Start(pod *grav.Pod) {
 
 	go func() {
 		for {
-			message, err := c.sub.NextMsg(time.Duration(time.Second * 60))
-			if err != nil {
-				if err == nats.ErrTimeout {
-					continue
-				}
-
-				c.log.Error(errors.Wrap(err, "[bridge-nats] failed to ReadMessage, terminating connection"))
-				break
-			}
-
-			c.log.Debug("[bridge-nats] recieved message via", c.topic)
-
-			msg, err := grav.MsgFromBytes(message.Data)
-			if err != nil {
-				c.log.Error(errors.Wrap(err, "[bridge-nats] failed to MsgFromBytes"))
+			fetches := c.conn.PollFetches(context.Background())
+			if errs := fetches.Errors(); len(errs) > 0 {
+				c.log.Error(errors.Wrap(errs[0].Err, "failed to PollFetches"))
 				continue
 			}
 
-			// send to the Grav instance
-			c.pod.Send(msg)
+			iter := fetches.RecordIter()
+			for !iter.Done() {
+				record := iter.Next()
+
+				c.log.Debug("[bridge-kafka] recieved message via", c.topic)
+
+				msg, err := grav.MsgFromBytes(record.Value)
+				if err != nil {
+					c.log.Error(errors.Wrap(err, "[bridge-kafka] failed to MsgFromBytes"))
+					continue
+				}
+
+				// send to the Grav instance
+				c.pod.Send(msg)
+			}
 		}
 	}()
 }
 
 // Close closes the underlying connection
 func (c *Conn) Close() {
-	c.log.Debug("[bridge-nats] connection for", c.topic, "is closing")
-	if err := c.sub.Unsubscribe(); err != nil {
-		c.log.Error(errors.Wrapf(err, "[bridge-nats] connection for %s failed to close", c.topic))
-	}
+	c.log.Debug("[bridge-kafka] connection for", c.topic, "is closing")
+
+	c.conn.Close()
 }

@@ -60,7 +60,6 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 func (t *Transport) ConnectBridgeTopic(topic string) (grav.TopicConnection, error) {
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(t.endpoint),
-		// kgo.ConsumerGroup("my-group-identifier"),
 		kgo.ConsumeTopics(topic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()),
 	)

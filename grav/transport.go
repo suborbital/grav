@@ -15,6 +15,7 @@ const (
 var (
 	ErrConnectionClosed    = errors.New("connection was closed")
 	ErrNodeUUIDMismatch    = errors.New("handshake UUID did not match node UUID")
+	ErrBelongsToMismatch   = errors.New("new connection doesn't belongTo the same group or *")
 	ErrNotBridgeTransport  = errors.New("transport is not a bridge")
 	ErrBridgeOnlyTransport = errors.New("transport only supports bridge connection")
 )
@@ -33,6 +34,8 @@ type (
 	FindFunc func(uuid string) (Connection, bool)
 	// TransportType defines the type of Transport (mesh or bridge)
 	TransportType string
+	// HandshakeCallback allows the hub to determine if a connection should be acceted
+	HandshakeCallback func(*TransportHandshake) *TransportHandshakeAck
 )
 
 // TransportOpts is a set of options for transports
@@ -68,7 +71,7 @@ type Connection interface {
 	// Initiate a handshake for an outgoing connection and return the remote Ack
 	DoOutgoingHandshake(handshake *TransportHandshake) (*TransportHandshakeAck, error)
 	// Wait for an incoming handshake and return the provided Ack to the remote connection
-	DoIncomingHandshake(handshakeAck *TransportHandshakeAck) (*TransportHandshake, error)
+	DoIncomingHandshake(HandshakeCallback) (*TransportHandshake, error)
 	// Close requests that the Connection close itself
 	Close()
 }
@@ -83,10 +86,15 @@ type TopicConnection interface {
 
 // TransportHandshake represents a handshake sent to a node that you're trying to connect to
 type TransportHandshake struct {
-	UUID string `json:"uuid"`
+	UUID         string   `json:"uuid"`
+	BelongsTo    string   `json:"belongsTo"`
+	Capabilities []string `json:"capabilities"`
 }
 
 // TransportHandshakeAck represents a handshake response
 type TransportHandshakeAck struct {
-	UUID string `json:"uuid"`
+	Accept       bool     `json:"accept"`
+	UUID         string   `json:"uuid"`
+	BelongsTo    string   `json:"belongsTo"`
+	Capabilities []string `json:"capabilities"`
 }

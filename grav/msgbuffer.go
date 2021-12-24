@@ -10,12 +10,13 @@ const (
 
 // MsgBuffer is a buffer of messages with a particular size limit.
 // Oldest messages are automatically evicted as new ones are added
-// past said limit. Push() and Iter() are thread-safe.
+// past said limit. Push(), Next(), and Iter() are thread-safe.
 type MsgBuffer struct {
 	msgs       map[string]Message
 	order      []string
 	limit      int
 	startIndex int
+	nextIndex  int
 	lock       sync.RWMutex
 }
 
@@ -25,6 +26,7 @@ func NewMsgBuffer(limit int) *MsgBuffer {
 		order:      []string{},
 		limit:      limit,
 		startIndex: 0,
+		nextIndex:  0,
 		lock:       sync.RWMutex{},
 	}
 
@@ -55,6 +57,28 @@ func (m *MsgBuffer) Push(msg Message) {
 	}
 }
 
+// Next returns the next message in the buffer,
+// continually looping over the buffer (all callers share ordering)
+func (m *MsgBuffer) Next() Message {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if len(m.order) == 0 {
+		return nil
+	}
+
+	uuid := m.order[m.nextIndex]
+	msg := m.msgs[uuid]
+
+	if m.nextIndex == len(m.order)-1 {
+		m.nextIndex = 0
+	} else {
+		m.nextIndex++
+	}
+
+	return msg
+}
+
 // Iter calls msgFunc once per message in the buffer
 func (m *MsgBuffer) Iter(msgFunc MsgFunc) {
 	m.lock.RLock()
@@ -74,17 +98,14 @@ func (m *MsgBuffer) Iter(msgFunc MsgFunc) {
 
 		msgFunc(msg)
 
-		newIndex := index
-		if newIndex == lastIndex {
-			newIndex = 0
+		if index == lastIndex {
+			index = 0
 		} else {
-			newIndex++
+			index++
 		}
 
-		if newIndex == m.startIndex {
+		if index == m.startIndex {
 			more = false
 		}
-
-		index = newIndex
 	}
 }

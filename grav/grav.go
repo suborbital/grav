@@ -10,14 +10,17 @@ import (
 // ErrTransportNotConfigured represent package-level vars
 var (
 	ErrTransportNotConfigured = errors.New("transport plugin not configured")
+	ErrTunnelNotEstablished   = errors.New("tunnel cannot be established")
 )
 
 // Grav represents a Grav message bus instance
 type Grav struct {
-	NodeUUID string
-	bus      *messageBus
-	logger   *vlog.Logger
-	hub      *hub
+	NodeUUID     string
+	BelongsTo    string
+	Capabilities []string
+	bus          *messageBus
+	logger       *vlog.Logger
+	hub          *hub
 }
 
 // New creates a new Grav with the provided options
@@ -27,13 +30,15 @@ func New(opts ...OptionsModifier) *Grav {
 	options := newOptionsWithModifiers(opts...)
 
 	g := &Grav{
-		NodeUUID: nodeUUID,
-		bus:      newMessageBus(),
-		logger:   options.Logger,
+		NodeUUID:     nodeUUID,
+		BelongsTo:    options.BelongsTo,
+		Capabilities: options.Capabilities,
+		bus:          newMessageBus(),
+		logger:       options.Logger,
 	}
 
 	// the hub handles coordinating the transport and discovery plugins
-	g.hub = initHub(nodeUUID, options, options.Transport, options.Discovery, g.Connect)
+	g.hub = initHub(nodeUUID, options, g.Connect)
 
 	return g
 }
@@ -61,6 +66,22 @@ func (g *Grav) ConnectEndpoint(endpoint string) error {
 // ConnectBridgeTopic connects the Grav instance to a particular topic on the connected bridge
 func (g *Grav) ConnectBridgeTopic(topic string) error {
 	return g.hub.connectBridgeTopic(topic)
+}
+
+// Tunnel sends a message to a specific connection that has advertised
+// it has the required capability. This bypasses the main Grav bus.
+// Messages are load balanced between the connections that advertise the capability.
+func (g *Grav) Tunnel(capability string, msg Message) error {
+	conn := g.hub.connectionWithCapability(capability)
+	if conn == nil {
+		return ErrTunnelNotEstablished
+	}
+
+	if err := conn.Send(msg); err != nil {
+		return errors.Wrap(err, "failed to Send to tunneled connection")
+	}
+
+	return nil
 }
 
 func (g *Grav) connectWithOpts(opts *podOpts) *Pod {

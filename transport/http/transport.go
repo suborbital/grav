@@ -222,9 +222,11 @@ func (e *Endpoint) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*gra
 }
 
 // DoIncomingHandshake does an incoming handshake
-func (e *Endpoint) DoIncomingHandshake(ack *grav.TransportHandshakeAck) (*grav.TransportHandshake, error) {
+func (e *Endpoint) DoIncomingHandshake(callback grav.HandshakeCallback) (*grav.TransportHandshake, error) {
 	// this is a "fake handshake" as the node UUID was already surmised during the initial request
-	handshake := &grav.TransportHandshake{UUID: e.nodeUUID}
+	handshake := &grav.TransportHandshake{UUID: e.nodeUUID, BelongsTo: "*"}
+
+	callback(handshake)
 
 	return handshake, nil
 }

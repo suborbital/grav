@@ -72,16 +72,7 @@ func (g *Grav) ConnectBridgeTopic(topic string) error {
 // it has the required capability. This bypasses the main Grav bus.
 // Messages are load balanced between the connections that advertise the capability.
 func (g *Grav) Tunnel(capability string, msg Message) error {
-	conn := g.hub.connectionWithCapability(capability)
-	if conn == nil {
-		return ErrTunnelNotEstablished
-	}
-
-	if err := conn.Send(msg); err != nil {
-		return errors.Wrap(err, "failed to Send to tunneled connection")
-	}
-
-	return nil
+	return g.hub.sendTunneledMessage(capability, msg)
 }
 
 func (g *Grav) connectWithOpts(opts *podOpts) *Pod {

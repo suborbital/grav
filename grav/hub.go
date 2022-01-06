@@ -255,7 +255,7 @@ func (h *hub) outgoingMessageHandler() MsgFunc {
 					if errors.Is(err, ErrConnectionClosed) {
 						h.log.Debug("attempted to send on closed connection, will remove")
 					} else {
-						h.log.Warn("error sending to connection", uuid, ":", err.Error())
+						h.log.Warn("error sending to connection, will remove", uuid, ":", err.Error())
 					}
 
 					h.removeConnection(uuid)
@@ -351,19 +351,26 @@ func (h *hub) findConnection(uuid string) (Connection, bool) {
 	return nil, false
 }
 
-func (h *hub) connectionWithCapability(capability string) Connection {
+func (h *hub) sendTunneledMessage(capability string, msg Message) error {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
 	buffer, exists := h.capabilityUUIDBuffers[capability]
 	if !exists {
-		return nil
+		return ErrTunnelNotEstablished
 	}
 
 	// iterate a reasonable number of times to find a connection that's not removed
 	for i := 0; i < len(h.connections); i++ {
 		conn, exists := h.connections[string(buffer.Next().Data())]
 		if exists && conn.Conn != nil {
-			return conn.Conn
+			if err := conn.Conn.Send(msg); err != nil {
+				h.log.Error(errors.Wrap(err, "failed to Send on tunneled connection"))
+			} else {
+				return nil
+			}
 		}
 	}
 
-	return nil
+	return ErrTunnelNotEstablished
 }

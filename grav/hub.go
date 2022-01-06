@@ -72,6 +72,10 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 			if done != nil {
 				<-done
 
+				if h.discovery != nil {
+					h.discovery.Stop()
+				}
+
 				h.lock.Lock()
 				defer h.lock.Unlock()
 

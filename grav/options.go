@@ -1,12 +1,17 @@
 package grav
 
-import "github.com/suborbital/vektor/vlog"
+import (
+	"context"
+
+	"github.com/suborbital/vektor/vlog"
+)
 
 // Options represent Grav options
 type Options struct {
 	Logger       *vlog.Logger
 	Transport    Transport
 	Discovery    Discovery
+	Context      context.Context
 	Port         string
 	URI          string
 	BelongsTo    string
@@ -75,10 +80,18 @@ func UseCapabilities(capabilities ...string) OptionsModifier {
 	}
 }
 
+// UseContext sets the context for Grav which, when canceled, kills all Transport connections
+func UseContext(context context.Context) OptionsModifier {
+	return func(o *Options) {
+		o.Context = context
+	}
+}
+
 func defaultOptions() *Options {
 	o := &Options{
 		BelongsTo:    "*",
 		Capabilities: []string{},
+		Context:      context.Background(),
 		Logger:       vlog.Default(),
 		Port:         "8080",
 		URI:          "/meta/message",

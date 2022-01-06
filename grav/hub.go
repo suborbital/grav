@@ -7,6 +7,8 @@ import (
 	"github.com/suborbital/vektor/vlog"
 )
 
+const capabilityBufferSize = 256
+
 // hub is responsible for coordinating the transport and discovery plugins
 type hub struct {
 	nodeUUID     string
@@ -293,7 +295,7 @@ func (h *hub) addConnection(connection Connection, uuid, belongsTo string, capab
 
 	for _, c := range capabilities {
 		if _, exists := h.capabilityUUIDBuffers[c]; !exists {
-			h.capabilityUUIDBuffers[c] = NewMsgBuffer(256)
+			h.capabilityUUIDBuffers[c] = NewMsgBuffer(capabilityBufferSize)
 		}
 
 		h.capabilityUUIDBuffers[c].Push(NewMsg(c, []byte(uuid)))
@@ -360,8 +362,8 @@ func (h *hub) sendTunneledMessage(capability string, msg Message) error {
 		return ErrTunnelNotEstablished
 	}
 
-	// iterate a reasonable number of times to find a connection that's not removed
-	for i := 0; i < len(h.connections); i++ {
+	// iterate a reasonable number of times to find a connection that's not removed or dead
+	for i := 0; i < capabilityBufferSize; i++ {
 		uuid := string(buffer.Next().Data())
 
 		conn, exists := h.connections[uuid]

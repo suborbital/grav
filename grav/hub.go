@@ -362,10 +362,13 @@ func (h *hub) sendTunneledMessage(capability string, msg Message) error {
 
 	// iterate a reasonable number of times to find a connection that's not removed
 	for i := 0; i < len(h.connections); i++ {
-		conn, exists := h.connections[string(buffer.Next().Data())]
+		uuid := string(buffer.Next().Data())
+
+		conn, exists := h.connections[uuid]
 		if exists && conn.Conn != nil {
 			if err := conn.Conn.Send(msg); err != nil {
-				h.log.Error(errors.Wrap(err, "failed to Send on tunneled connection"))
+				h.log.Warn(errors.Wrap(err, "failed to Send on tunneled connection, will remove").Error())
+				defer h.removeConnection(uuid)
 			} else {
 				return nil
 			}

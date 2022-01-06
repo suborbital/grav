@@ -68,9 +68,9 @@ func (g *Grav) ConnectBridgeTopic(topic string) error {
 	return g.hub.connectBridgeTopic(topic)
 }
 
-// Tunnel sends a message to a specific connection that has advertised
-// it has the required capability. This bypasses the main Grav bus.
-// Messages are load balanced between the connections that advertise the capability.
+// Tunnel sends a message to a specific connection that has advertised it has the required capability.
+// This bypasses the main Grav bus, which is why it isn't a method on Pod.
+// Messages are load balanced between the connections that advertise the capability in question.
 func (g *Grav) Tunnel(capability string, msg Message) error {
 	return g.hub.sendTunneledMessage(capability, msg)
 }

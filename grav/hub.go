@@ -354,9 +354,6 @@ func (h *hub) findConnection(uuid string) (Connection, bool) {
 }
 
 func (h *hub) sendTunneledMessage(capability string, msg Message) error {
-	h.lock.RLock()
-	defer h.lock.RUnlock()
-
 	buffer, exists := h.capabilityUUIDBuffers[capability]
 	if !exists {
 		return ErrTunnelNotEstablished
@@ -366,7 +363,10 @@ func (h *hub) sendTunneledMessage(capability string, msg Message) error {
 	for i := 0; i < capabilityBufferSize; i++ {
 		uuid := string(buffer.Next().Data())
 
+		h.lock.RLock()
 		conn, exists := h.connections[uuid]
+		h.lock.RUnlock()
+
 		if exists && conn.Conn != nil {
 			if err := conn.Conn.Send(msg); err != nil {
 				h.log.Warn(errors.Wrap(err, "failed to Send on tunneled connection, will remove").Error())

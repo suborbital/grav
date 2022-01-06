@@ -370,7 +370,7 @@ func (h *hub) sendTunneledMessage(capability string, msg Message) error {
 		if exists && conn.Conn != nil {
 			if err := conn.Conn.Send(msg); err != nil {
 				h.log.Warn(errors.Wrap(err, "failed to Send on tunneled connection, will remove").Error())
-				defer h.removeConnection(uuid)
+				h.removeConnection(uuid)
 			} else {
 				return nil
 			}

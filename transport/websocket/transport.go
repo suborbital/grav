@@ -1,12 +1,15 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
+
+	"sync/atomic"
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
@@ -29,10 +32,12 @@ type Conn struct {
 	nodeUUID string
 	log      *vlog.Logger
 
-	conn  *websocket.Conn
-	cLock sync.Mutex
+	conn      *websocket.Conn
+	withdrawn atomic.Value
+	lock      sync.Mutex
 
 	recvFunc grav.ReceiveFunc
+	ctx      context.Context
 }
 
 // New creates a new websocket transport
@@ -75,10 +80,13 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	}
 
 	conn := &Conn{
-		log:   t.log,
-		conn:  c,
-		cLock: sync.Mutex{},
+		log:       t.log,
+		conn:      c,
+		withdrawn: atomic.Value{},
+		lock:      sync.Mutex{},
 	}
+
+	conn.withdrawn.Store(false)
 
 	return conn, nil
 }
@@ -115,8 +123,9 @@ func (t *Transport) HTTPHandlerFunc() http.HandlerFunc {
 }
 
 // Start begins the receiving of messages
-func (c *Conn) Start(recvFunc grav.ReceiveFunc) {
+func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 	c.recvFunc = recvFunc
+	c.ctx = ctx
 
 	c.conn.SetCloseHandler(func(code int, text string) error {
 		c.log.Warn(fmt.Sprintf("[transport-websocket] connection closing with code: %d", code))
@@ -125,10 +134,16 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc) {
 
 	go func() {
 		for {
-			_, message, err := c.conn.ReadMessage()
+			msgType, message, err := c.conn.ReadMessage()
 			if err != nil {
 				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, terminating connection"))
 				break
+			}
+
+			if msgType == grav.TransportMsgTypeWithdraw {
+				c.log.Info("[transport-websocket] peer has withdrawn, marking connection")
+				c.withdrawn.Store(true)
+				continue
 			}
 
 			c.log.Debug("[transport-websocket] recieved message via", c.nodeUUID)
@@ -141,6 +156,27 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc) {
 
 			// send to the Grav instance
 			c.recvFunc(msg)
+
+			// after recieving a message, check to see if we have withdrawn before receiving again
+			if c.ctx.Err() != nil {
+				c.log.Info("[transport-websocket] connection context canceled, halting message listening")
+
+				withdrawl := &grav.TransportWithdraw{
+					UUID: c.nodeUUID,
+				}
+
+				withdrawlJSON, err := json.Marshal(withdrawl)
+				if err != nil {
+					c.log.Error(errors.Wrap(err, "[transport-websocket] failed to Marshal withdraw message"))
+					break
+				}
+
+				if err := c.WriteMessage(grav.TransportMsgTypeWithdraw, withdrawlJSON); err != nil {
+					c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdrawl"))
+				}
+
+				break
+			}
 		}
 	}()
 }
@@ -159,6 +195,8 @@ func (c *Conn) Send(msg grav.Message) error {
 	if err := c.WriteMessage(grav.TransportMsgTypeUser, msgBytes); err != nil {
 		if errors.Is(err, websocket.ErrCloseSent) {
 			return grav.ErrConnectionClosed
+		} else if err == grav.ErrNodeWithdrawn {
+			return err
 		}
 
 		return errors.Wrap(err, "[transport-websocket] failed to WriteMessage")
@@ -256,8 +294,12 @@ func (c *Conn) Close() {
 
 // WriteMessage is a concurrent-safe wrapper around the websocket WriteMessage
 func (c *Conn) WriteMessage(messageType int, data []byte) error {
-	c.cLock.Lock()
-	defer c.cLock.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if withdrawn := c.withdrawn.Load(); withdrawn.(bool) {
+		return grav.ErrNodeWithdrawn
+	}
 
 	return c.conn.WriteMessage(messageType, data)
 }

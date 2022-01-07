@@ -1,7 +1,9 @@
 package grav
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/suborbital/vektor/vlog"
@@ -16,6 +18,7 @@ type hub struct {
 	capabilities []string
 	transport    Transport
 	discovery    Discovery
+	context      context.Context
 	log          *vlog.Logger
 	pod          *Pod
 	connectFunc  func() *Pod
@@ -41,6 +44,7 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 		capabilities:          options.Capabilities,
 		transport:             options.Transport,
 		discovery:             options.Discovery,
+		context:               options.Context,
 		log:                   options.Logger,
 		pod:                   connectFunc(),
 		connectFunc:           connectFunc,
@@ -68,6 +72,8 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 			}
 
 			// if Grav's context is ever canceled, close all connections
+			// all of Grav's connections are also checking for a closed context
+			// to send withdraw messages and stop listening, so wait 5s before closing.
 			done := options.Context.Done()
 			if done != nil {
 				<-done
@@ -75,6 +81,8 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 				if h.discovery != nil {
 					h.discovery.Stop()
 				}
+
+				time.Sleep(time.Second * 5)
 
 				h.lock.Lock()
 				defer h.lock.Unlock()
@@ -273,13 +281,18 @@ func (h *hub) outgoingMessageHandler() MsgFunc {
 				h.log.Debug("sending message", msg.UUID(), "to", uuid)
 
 				if err := conn.Conn.Send(msg); err != nil {
-					if errors.Is(err, ErrConnectionClosed) {
-						h.log.Debug("attempted to send on closed connection, will remove")
+					if err == ErrNodeWithdrawn {
+						// that's fine, don't remove yet (it will be closed later)
 					} else {
-						h.log.Warn("error sending to connection, will remove", uuid, ":", err.Error())
+						if errors.Is(err, ErrConnectionClosed) {
+							h.log.Debug("attempted to send on closed connection, will remove")
+						} else {
+							h.log.Warn("error sending to connection, will remove", uuid, ":", err.Error())
+						}
+
+						h.removeConnection(uuid)
 					}
 
-					h.removeConnection(uuid)
 				}
 			}()
 		}
@@ -302,7 +315,7 @@ func (h *hub) addConnection(connection Connection, uuid, belongsTo string, capab
 
 	h.log.Debug("adding connection for", uuid)
 
-	connection.Start(h.incomingMessageHandler(uuid))
+	connection.Start(h.incomingMessageHandler(uuid), h.context)
 
 	holder := &connectionHolder{
 		Conn:         connection,
@@ -340,7 +353,7 @@ func (h *hub) replaceConnection(newConnection Connection, uuid, belongsTo string
 
 	delete(h.connections, uuid)
 
-	newConnection.Start(h.incomingMessageHandler(uuid))
+	newConnection.Start(h.incomingMessageHandler(uuid), h.context)
 
 	newHolder := &connectionHolder{
 		Conn:         newConnection,

@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -171,7 +172,7 @@ func (t *Transport) handleRequest(req *http.Request) (interface{}, error) {
 }
 
 // Start "starts" the connection
-func (e *Endpoint) Start(recvFunc grav.ReceiveFunc) {
+func (e *Endpoint) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 	e.receiveFunc = recvFunc
 }
 

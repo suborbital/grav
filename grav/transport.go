@@ -1,6 +1,8 @@
 package grav
 
 import (
+	"context"
+
 	"github.com/pkg/errors"
 	"github.com/suborbital/vektor/vlog"
 )
@@ -9,6 +11,7 @@ import (
 const (
 	TransportMsgTypeHandshake = 1
 	TransportMsgTypeUser      = 2
+	TransportMsgTypeWithdraw  = 3
 )
 
 // ErrConnectionClosed and others are transport and connection related errors
@@ -18,6 +21,7 @@ var (
 	ErrBelongsToMismatch   = errors.New("new connection doesn't belongTo the same group or *")
 	ErrNotBridgeTransport  = errors.New("transport is not a bridge")
 	ErrBridgeOnlyTransport = errors.New("transport only supports bridge connection")
+	ErrNodeWithdrawn       = errors.New("node has withdrawn from the mesh")
 )
 
 var (
@@ -63,7 +67,8 @@ type Transport interface {
 // Connection represents a connection to another node
 type Connection interface {
 	// Called when the connection handshake is complete and the connection can actively start exchanging messages
-	Start(recvFunc ReceiveFunc)
+	// The Connection is responsible for sending a 'withdraw' message and halting any incoming messages
+	Start(recvFunc ReceiveFunc, ctx context.Context)
 	// Send a message from the local instance to the connected node
 	Send(msg Message) error
 	// CanReplace returns true if the connection can be replaced (i.e. is not a persistent connection like a websocket)
@@ -97,4 +102,9 @@ type TransportHandshakeAck struct {
 	UUID         string   `json:"uuid"`
 	BelongsTo    string   `json:"belongsTo"`
 	Capabilities []string `json:"capabilities"`
+}
+
+// TransportWithdraw represents a message sent to a peer indicating a withdrawal from the mesh
+type TransportWithdraw struct {
+	UUID string `json:"uuid"`
 }

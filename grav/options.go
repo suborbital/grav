@@ -1,14 +1,21 @@
 package grav
 
-import "github.com/suborbital/vektor/vlog"
+import (
+	"context"
+
+	"github.com/suborbital/vektor/vlog"
+)
 
 // Options represent Grav options
 type Options struct {
-	Logger    *vlog.Logger
-	Transport Transport
-	Discovery Discovery
-	Port      string
-	URI       string
+	Logger       *vlog.Logger
+	Transport    Transport
+	Discovery    Discovery
+	Context      context.Context
+	Port         string
+	URI          string
+	BelongsTo    string
+	Capabilities []string
 }
 
 // OptionsModifier is function that modifies an option
@@ -59,13 +66,37 @@ func UseDiscovery(discovery Discovery) OptionsModifier {
 	}
 }
 
+// UseBelongsTo sets the 'BelongsTo' property for the Grav instance
+func UseBelongsTo(belongsTo string) OptionsModifier {
+	return func(o *Options) {
+		o.BelongsTo = belongsTo
+	}
+}
+
+// UseCapabilities sets the 'Capabilities' property for the Grav instance
+func UseCapabilities(capabilities ...string) OptionsModifier {
+	return func(o *Options) {
+		o.Capabilities = capabilities
+	}
+}
+
+// UseContext sets the context for Grav which, when canceled, kills all Transport connections
+func UseContext(context context.Context) OptionsModifier {
+	return func(o *Options) {
+		o.Context = context
+	}
+}
+
 func defaultOptions() *Options {
 	o := &Options{
-		Logger:    vlog.Default(),
-		Port:      "8080",
-		URI:       "/meta/message",
-		Transport: nil,
-		Discovery: nil,
+		BelongsTo:    "*",
+		Capabilities: []string{},
+		Context:      context.Background(),
+		Logger:       vlog.Default(),
+		Port:         "8080",
+		URI:          "/meta/message",
+		Transport:    nil,
+		Discovery:    nil,
 	}
 
 	return o

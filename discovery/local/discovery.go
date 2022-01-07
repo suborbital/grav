@@ -12,8 +12,9 @@ import (
 
 // Discovery is a grav Discovery plugin using local network multicast
 type Discovery struct {
-	opts *grav.DiscoveryOpts
-	log  *vlog.Logger
+	opts     *grav.DiscoveryOpts
+	log      *vlog.Logger
+	stopChan chan struct{}
 
 	discoveryFunc grav.DiscoveryFunc
 }
@@ -37,6 +38,7 @@ func (d *Discovery) Start(opts *grav.DiscoveryOpts, discoveryFunc grav.Discovery
 	d.opts = opts
 	d.log = opts.Logger
 	d.discoveryFunc = discoveryFunc
+	d.stopChan = make(chan struct{})
 
 	d.log.Info("[discovery-local] starting discovery, advertising endpoint", opts.TransportPort, opts.TransportURI)
 
@@ -73,6 +75,7 @@ func (d *Discovery) Start(opts *grav.DiscoveryOpts, discoveryFunc grav.Discovery
 		TimeLimit:   -1,
 		Notify:      notifyFunc,
 		AllowSelf:   true,
+		StopChan:    d.stopChan,
 	})
 
 	return err
@@ -81,4 +84,11 @@ func (d *Discovery) Start(opts *grav.DiscoveryOpts, discoveryFunc grav.Discovery
 // UseDiscoveryFunc sets the function to be used when a new peer is discovered
 func (d *Discovery) UseDiscoveryFunc(dFunc func(endpoint string, uuid string)) {
 	d.discoveryFunc = dFunc
+}
+
+// Stop stops Discovery
+func (d *Discovery) Stop() error {
+	d.stopChan <- struct{}{}
+
+	return nil
 }

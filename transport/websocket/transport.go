@@ -211,7 +211,7 @@ func (c *Conn) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*grav.Tr
 
 // DoIncomingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
 // so that it can be validated against the UUID that was provided in discovery (or if none was provided)
-func (c *Conn) DoIncomingHandshake(handshakeAck *grav.TransportHandshakeAck) (*grav.TransportHandshake, error) {
+func (c *Conn) DoIncomingHandshake(handshakeCallback grav.HandshakeCallback) (*grav.TransportHandshake, error) {
 	mt, message, err := c.conn.ReadMessage()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to ReadMessage for handshake, terminating connection")
@@ -223,14 +223,16 @@ func (c *Conn) DoIncomingHandshake(handshakeAck *grav.TransportHandshakeAck) (*g
 
 	c.log.Debug("[transport-websocket] recieved handshake")
 
-	handshake := grav.TransportHandshake{}
-	if err := json.Unmarshal(message, &handshake); err != nil {
+	handshake := &grav.TransportHandshake{}
+	if err := json.Unmarshal(message, handshake); err != nil {
 		return nil, errors.Wrap(err, "failed to Unmarshal handshake")
 	}
 
-	ackJSON, err := json.Marshal(handshakeAck)
+	ack := handshakeCallback(handshake)
+
+	ackJSON, err := json.Marshal(ack)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to Marshal handshake JSON")
+		return nil, errors.Wrap(err, "failed to Marshal handshake ack JSON")
 	}
 
 	c.log.Debug("[transport-websocket] sending handshake ack")
@@ -243,7 +245,7 @@ func (c *Conn) DoIncomingHandshake(handshakeAck *grav.TransportHandshakeAck) (*g
 
 	c.nodeUUID = handshake.UUID
 
-	return &handshake, nil
+	return handshake, nil
 }
 
 // Close closes the underlying connection

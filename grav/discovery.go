@@ -9,6 +9,7 @@ type DiscoveryFunc func(endpoint string, uuid string)
 type Discovery interface {
 	// Start is called to start the Discovery plugin
 	Start(*DiscoveryOpts, DiscoveryFunc) error
+	Stop() error
 }
 
 // DiscoveryOpts is a set of options for transports

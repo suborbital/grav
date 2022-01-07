@@ -114,9 +114,12 @@ func (t *Transport) HTTPHandlerFunc() http.HandlerFunc {
 		t.log.Debug("[transport-websocket] upgraded connection:", r.URL.String())
 
 		conn := &Conn{
-			conn: c,
-			log:  t.log,
+			conn:      c,
+			log:       t.log,
+			withdrawn: atomic.Value{},
 		}
+
+		conn.withdrawn.Store(false)
 
 		t.connectionFunc(conn)
 	}

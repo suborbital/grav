@@ -136,6 +136,27 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 	})
 
 	go func() {
+		// after recieving a message, check to see if we have withdrawn before receiving again
+		<-c.ctx.Done()
+
+		c.log.Info("[transport-websocket] connection context canceled, sending withdraw message")
+
+		withdrawl := &grav.TransportWithdraw{
+			UUID: c.nodeUUID,
+		}
+
+		withdrawlJSON, err := json.Marshal(withdrawl)
+		if err != nil {
+			c.log.Error(errors.Wrap(err, "[transport-websocket] failed to Marshal withdraw message"))
+			return
+		}
+
+		if err := c.WriteMessage(grav.TransportMsgTypeWithdraw, withdrawlJSON); err != nil {
+			c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdrawl"))
+		}
+	}()
+
+	go func() {
 		for {
 			msgType, message, err := c.conn.ReadMessage()
 			if err != nil {
@@ -159,25 +180,6 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 
 			// send to the Grav instance
 			c.recvFunc(msg)
-
-			// after recieving a message, check to see if we have withdrawn before receiving again
-			if c.ctx.Err() != nil {
-				c.log.Info("[transport-websocket] connection context canceled, sending withdraw message")
-
-				withdrawl := &grav.TransportWithdraw{
-					UUID: c.nodeUUID,
-				}
-
-				withdrawlJSON, err := json.Marshal(withdrawl)
-				if err != nil {
-					c.log.Error(errors.Wrap(err, "[transport-websocket] failed to Marshal withdraw message"))
-					continue
-				}
-
-				if err := c.WriteMessage(grav.TransportMsgTypeWithdraw, withdrawlJSON); err != nil {
-					c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdrawl"))
-				}
-			}
 		}
 	}()
 }

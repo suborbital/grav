@@ -85,7 +85,7 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 
 			// if Grav's context is ever canceled, close all connections
 			// all of Grav's connections are also checking for a closed context
-			// to send withdraw messages, so wait 5s before closing.
+			// to send withdraw messages, so wait 3s before closing.
 			<-h.context.Done()
 
 			if h.discovery != nil {

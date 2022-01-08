@@ -7,13 +7,6 @@ import (
 	"github.com/suborbital/vektor/vlog"
 )
 
-// TransportMsgTypeHandshake and others represent internal Transport message types used for handshakes and metadata transfer
-const (
-	TransportMsgTypeHandshake = 1
-	TransportMsgTypeUser      = 2
-	TransportMsgTypeWithdraw  = 3
-)
-
 // ErrConnectionClosed and others are transport and connection related errors
 var (
 	ErrConnectionClosed    = errors.New("connection was closed")

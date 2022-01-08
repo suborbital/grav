@@ -75,6 +75,13 @@ func (g *Grav) Tunnel(capability string, msg Message) error {
 	return g.hub.sendTunneledMessage(capability, msg)
 }
 
+// Withdraw cancels discovery, sends withdraw messages to all peers,
+// waits 3 seconds to allow in-flight messages to be handled, then closes
+// all connections to peers before returning to the caller. Discovery cannot be restarted.
+func (g *Grav) Withdraw() {
+	g.hub.withdrawFunc()
+}
+
 func (g *Grav) connectWithOpts(opts *podOpts) *Pod {
 	pod := newPod(g.bus.busChan, opts)
 

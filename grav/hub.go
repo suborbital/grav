@@ -19,6 +19,7 @@ type hub struct {
 	transport    Transport
 	discovery    Discovery
 	context      context.Context
+	withdrawFunc func()
 	log          *vlog.Logger
 	pod          *Pod
 	connectFunc  func() *Pod
@@ -38,13 +39,24 @@ type connectionHolder struct {
 }
 
 func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	withdraw := func() {
+		cancel()
+
+		// this sleep matches the sleep below so that the hub.withdraw
+		// method doesn't return until the withdraw sequence completes
+		time.Sleep(time.Second * 3)
+	}
+
 	h := &hub{
 		nodeUUID:              nodeUUID,
 		belongsTo:             options.BelongsTo,
 		capabilities:          options.Capabilities,
 		transport:             options.Transport,
 		discovery:             options.Discovery,
-		context:               options.Context,
+		context:               ctx,
+		withdrawFunc:          withdraw,
 		log:                   options.Logger,
 		pod:                   connectFunc(),
 		connectFunc:           connectFunc,
@@ -73,25 +85,21 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 
 			// if Grav's context is ever canceled, close all connections
 			// all of Grav's connections are also checking for a closed context
-			// to send withdraw messages and stop listening, so wait 5s before closing.
-			done := options.Context.Done()
-			if done != nil {
-				<-done
+			// to send withdraw messages, so wait 5s before closing.
+			<-h.context.Done()
 
-				if h.discovery != nil {
-					h.discovery.Stop()
-				}
+			if h.discovery != nil {
+				h.discovery.Stop()
+			}
 
-				time.Sleep(time.Second * 5)
+			time.Sleep(time.Second * 3)
 
-				h.lock.Lock()
-				defer h.lock.Unlock()
+			h.lock.Lock()
+			defer h.lock.Unlock()
 
-				for uuid := range h.connections {
-					conn := h.connections[uuid]
-					conn.Conn.Close()
-					delete(h.connections, uuid)
-				}
+			for uuid := range h.connections {
+				conn := h.connections[uuid]
+				conn.Conn.Close()
 			}
 		}()
 

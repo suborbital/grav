@@ -141,17 +141,7 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 
 		c.log.Info("[transport-websocket] connection context canceled, sending withdraw message")
 
-		withdrawl := &grav.TransportWithdraw{
-			UUID: c.nodeUUID,
-		}
-
-		withdrawlJSON, err := json.Marshal(withdrawl)
-		if err != nil {
-			c.log.Error(errors.Wrap(err, "[transport-websocket] failed to Marshal withdraw message"))
-			return
-		}
-
-		if err := c.WriteMessage(websocket.TextMessage, withdrawlJSON); err != nil {
+		if err := c.WriteMessage(websocket.TextMessage, []byte("WITHDRAW")); err != nil {
 			c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdraw"))
 		}
 	}()
@@ -164,7 +154,7 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 				break
 			}
 
-			if msgType == websocket.TextMessage {
+			if msgType == websocket.TextMessage && string(message) == "WITHDRAW" {
 				c.log.Info("[transport-websocket] peer has withdrawn, marking connection")
 				c.withdrawn.Store(true)
 				continue
@@ -225,7 +215,7 @@ func (c *Conn) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*grav.Tr
 
 	c.log.Debug("[transport-websocket] sending handshake")
 
-	if err := c.WriteMessage(websocket.PingMessage, handshakeJSON); err != nil {
+	if err := c.WriteMessage(websocket.BinaryMessage, handshakeJSON); err != nil {
 		return nil, errors.Wrap(err, "failed to WriteMessage handshake")
 	}
 
@@ -234,7 +224,7 @@ func (c *Conn) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*grav.Tr
 		return nil, errors.Wrap(err, "failed to ReadMessage for handshake ack, terminating connection")
 	}
 
-	if mt != websocket.PongMessage {
+	if mt != websocket.BinaryMessage {
 		return nil, errors.New("first message recieved was not handshake ack")
 	}
 
@@ -258,7 +248,7 @@ func (c *Conn) DoIncomingHandshake(handshakeCallback grav.HandshakeCallback) (*g
 		return nil, errors.Wrap(err, "failed to ReadMessage for handshake, terminating connection")
 	}
 
-	if mt != websocket.PongMessage {
+	if mt != websocket.BinaryMessage {
 		return nil, errors.New("first message recieved was not handshake")
 	}
 
@@ -278,7 +268,7 @@ func (c *Conn) DoIncomingHandshake(handshakeCallback grav.HandshakeCallback) (*g
 
 	c.log.Debug("[transport-websocket] sending handshake ack")
 
-	if err := c.WriteMessage(websocket.PongMessage, ackJSON); err != nil {
+	if err := c.WriteMessage(websocket.BinaryMessage, ackJSON); err != nil {
 		return nil, errors.Wrap(err, "failed to WriteMessage handshake ack")
 	}
 

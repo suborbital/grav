@@ -183,7 +183,7 @@ func (c *Conn) Send(msg grav.Message) error {
 		return nil
 	}
 
-	c.log.Debug("[transport-websocket] sending message to connection", c.nodeUUID)
+	c.log.Info("[transport-websocket] sending message", msg.UUID(), "to connection", c.nodeUUID)
 
 	if err := c.WriteMessage(websocket.BinaryMessage, msgBytes); err != nil {
 		if errors.Is(err, websocket.ErrCloseSent) {
@@ -195,7 +195,7 @@ func (c *Conn) Send(msg grav.Message) error {
 		return errors.Wrap(err, "[transport-websocket] failed to WriteMessage")
 	}
 
-	c.log.Debug("[transport-websocket] sent message to connection", c.nodeUUID)
+	c.log.Info("[transport-websocket] sent message", msg.UUID(), "to connection", c.nodeUUID)
 
 	return nil
 }

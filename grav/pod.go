@@ -8,7 +8,7 @@ import (
 
 const (
 	// defaultPodChanSize is the default size of the channels used for pod - bus communication
-	defaultPodChanSize = 128
+	defaultPodChanSize = 256
 )
 
 // podFeedbackMsgReplay and others are the messages sent via feedback channel when the pod needs to communicate its state to the bus

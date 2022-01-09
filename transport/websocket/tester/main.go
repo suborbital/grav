@@ -34,7 +34,7 @@ func main() {
 		grav.UseTransport(gwss),
 		grav.UseDiscovery(locald),
 		grav.UseBelongsTo(b2),
-		grav.UseCapabilities(cap),
+		grav.UseInterests(cap),
 	)
 
 	pod := g.Connect()

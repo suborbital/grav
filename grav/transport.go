@@ -84,17 +84,17 @@ type TopicConnection interface {
 
 // TransportHandshake represents a handshake sent to a node that you're trying to connect to
 type TransportHandshake struct {
-	UUID         string   `json:"uuid"`
-	BelongsTo    string   `json:"belongsTo"`
-	Capabilities []string `json:"capabilities"`
+	UUID      string   `json:"uuid"`
+	BelongsTo string   `json:"belongsTo"`
+	Interests []string `json:"interests"`
 }
 
 // TransportHandshakeAck represents a handshake response
 type TransportHandshakeAck struct {
-	Accept       bool     `json:"accept"`
-	UUID         string   `json:"uuid"`
-	BelongsTo    string   `json:"belongsTo"`
-	Capabilities []string `json:"capabilities"`
+	Accept    bool     `json:"accept"`
+	UUID      string   `json:"uuid"`
+	BelongsTo string   `json:"belongsTo"`
+	Interests []string `json:"interests"`
 }
 
 // TransportWithdraw represents a message sent to a peer indicating a withdrawal from the mesh

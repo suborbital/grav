@@ -15,7 +15,7 @@ const capabilityBufferSize = 256
 type hub struct {
 	nodeUUID     string
 	belongsTo    string
-	capabilities []string
+	interests    []string
 	transport    Transport
 	discovery    Discovery
 	context      context.Context
@@ -33,9 +33,9 @@ type hub struct {
 }
 
 type connectionHolder struct {
-	Conn         Connection
-	BelongsTo    string
-	Capabilities []string
+	Conn      Connection
+	BelongsTo string
+	Interests []string
 }
 
 func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
@@ -52,7 +52,7 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 	h := &hub{
 		nodeUUID:              nodeUUID,
 		belongsTo:             options.BelongsTo,
-		capabilities:          options.Capabilities,
+		interests:             options.Interests,
 		transport:             options.Transport,
 		discovery:             options.Discovery,
 		context:               ctx,
@@ -189,7 +189,7 @@ func (h *hub) connectBridgeTopic(topic string) error {
 }
 
 func (h *hub) setupOutgoingConnection(connection Connection, uuid string) {
-	handshake := &TransportHandshake{h.nodeUUID, h.belongsTo, h.capabilities}
+	handshake := &TransportHandshake{h.nodeUUID, h.belongsTo, h.interests}
 
 	ack, err := connection.DoOutgoingHandshake(handshake)
 	if err != nil {
@@ -216,7 +216,7 @@ func (h *hub) setupOutgoingConnection(connection Connection, uuid string) {
 		return
 	}
 
-	h.setupNewConnection(connection, uuid, ack.BelongsTo, ack.Capabilities)
+	h.setupNewConnection(connection, uuid, ack.BelongsTo, ack.Interests)
 }
 
 func (h *hub) handleIncomingConnection(connection Connection) {
@@ -232,7 +232,7 @@ func (h *hub) handleIncomingConnection(connection Connection) {
 			ack.Accept = false
 		} else {
 			ack.BelongsTo = h.belongsTo
-			ack.Capabilities = h.capabilities
+			ack.Interests = h.interests
 		}
 
 		return ack
@@ -257,10 +257,10 @@ func (h *hub) handleIncomingConnection(connection Connection) {
 		return
 	}
 
-	h.setupNewConnection(connection, handshake.UUID, handshake.BelongsTo, handshake.Capabilities)
+	h.setupNewConnection(connection, handshake.UUID, handshake.BelongsTo, handshake.Interests)
 }
 
-func (h *hub) setupNewConnection(connection Connection, uuid, belongsTo string, capabilities []string) {
+func (h *hub) setupNewConnection(connection Connection, uuid, belongsTo string, interests []string) {
 	// if an existing connection is found, check if it can be replaced and do so if possible
 	if existing, exists := h.findConnection(uuid); exists {
 		if !existing.CanReplace() {
@@ -268,10 +268,10 @@ func (h *hub) setupNewConnection(connection Connection, uuid, belongsTo string, 
 			h.log.Debug("encountered duplicate connection, discarding")
 		} else {
 			existing.Close()
-			h.replaceConnection(connection, uuid, belongsTo, capabilities)
+			h.replaceConnection(connection, uuid, belongsTo, interests)
 		}
 	} else {
-		h.addConnection(connection, uuid, belongsTo, capabilities)
+		h.addConnection(connection, uuid, belongsTo, interests)
 	}
 }
 
@@ -317,7 +317,7 @@ func (h *hub) incomingMessageHandler(uuid string) ReceiveFunc {
 	}
 }
 
-func (h *hub) addConnection(connection Connection, uuid, belongsTo string, capabilities []string) {
+func (h *hub) addConnection(connection Connection, uuid, belongsTo string, interests []string) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
@@ -326,14 +326,14 @@ func (h *hub) addConnection(connection Connection, uuid, belongsTo string, capab
 	connection.Start(h.incomingMessageHandler(uuid), h.context)
 
 	holder := &connectionHolder{
-		Conn:         connection,
-		BelongsTo:    belongsTo,
-		Capabilities: capabilities,
+		Conn:      connection,
+		BelongsTo: belongsTo,
+		Interests: interests,
 	}
 
 	h.connections[uuid] = holder
 
-	for _, c := range capabilities {
+	for _, c := range interests {
 		if _, exists := h.capabilityUUIDBuffers[c]; !exists {
 			h.capabilityUUIDBuffers[c] = NewMsgBuffer(capabilityBufferSize)
 		}
@@ -353,7 +353,7 @@ func (h *hub) addTopicConnection(connection TopicConnection, topic string) {
 	h.topicConnections[topic] = connection
 }
 
-func (h *hub) replaceConnection(newConnection Connection, uuid, belongsTo string, capabilities []string) {
+func (h *hub) replaceConnection(newConnection Connection, uuid, belongsTo string, interests []string) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
@@ -364,9 +364,9 @@ func (h *hub) replaceConnection(newConnection Connection, uuid, belongsTo string
 	newConnection.Start(h.incomingMessageHandler(uuid), h.context)
 
 	newHolder := &connectionHolder{
-		Conn:         newConnection,
-		BelongsTo:    belongsTo,
-		Capabilities: capabilities,
+		Conn:      newConnection,
+		BelongsTo: belongsTo,
+		Interests: interests,
 	}
 
 	h.connections[uuid] = newHolder

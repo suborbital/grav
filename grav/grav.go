@@ -15,12 +15,12 @@ var (
 
 // Grav represents a Grav message bus instance
 type Grav struct {
-	NodeUUID     string
-	BelongsTo    string
-	Capabilities []string
-	bus          *messageBus
-	logger       *vlog.Logger
-	hub          *hub
+	NodeUUID  string
+	BelongsTo string
+	Interests []string
+	bus       *messageBus
+	logger    *vlog.Logger
+	hub       *hub
 }
 
 // New creates a new Grav with the provided options
@@ -30,11 +30,11 @@ func New(opts ...OptionsModifier) *Grav {
 	options := newOptionsWithModifiers(opts...)
 
 	g := &Grav{
-		NodeUUID:     nodeUUID,
-		BelongsTo:    options.BelongsTo,
-		Capabilities: options.Capabilities,
-		bus:          newMessageBus(),
-		logger:       options.Logger,
+		NodeUUID:  nodeUUID,
+		BelongsTo: options.BelongsTo,
+		Interests: options.Interests,
+		bus:       newMessageBus(),
+		logger:    options.Logger,
 	}
 
 	// the hub handles coordinating the transport and discovery plugins

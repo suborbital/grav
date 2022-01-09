@@ -160,13 +160,13 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 				continue
 			}
 
-			c.log.Debug("[transport-websocket] recieved message via", c.nodeUUID)
-
 			msg, err := grav.MsgFromBytes(message)
 			if err != nil {
 				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes"))
 				continue
 			}
+
+			c.log.Info("[transport-websocket] received message", msg.UUID(), "via", c.nodeUUID)
 
 			// send to the Grav instance
 			c.recvFunc(msg)

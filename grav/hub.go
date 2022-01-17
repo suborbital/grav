@@ -80,7 +80,7 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 
 		go func() {
 			if err := h.transport.Setup(transportOpts, h.handleIncomingConnection, h.findConnection); err != nil {
-				options.Logger.Error(errors.Wrap(err, "failed to Setup transport"))
+				h.log.Error(errors.Wrap(err, "failed to Setup transport"))
 			}
 
 			// if Grav's context is ever canceled, close all connections
@@ -99,7 +99,10 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 
 			for uuid := range h.connections {
 				conn := h.connections[uuid]
-				conn.Conn.Close()
+
+				if err := conn.Conn.Close(); err != nil {
+					h.log.Error(errors.Wrap(err, "failed to Close connection"))
+				}
 			}
 		}()
 

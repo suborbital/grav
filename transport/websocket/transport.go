@@ -130,11 +130,6 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 	c.recvFunc = recvFunc
 	c.ctx = ctx
 
-	c.conn.SetCloseHandler(func(code int, text string) error {
-		c.log.Warn(fmt.Sprintf("[transport-websocket] connection closing with code: %d", code))
-		return nil
-	})
-
 	go func() {
 		// after recieving a message, check to see if we have withdrawn before receiving again
 		<-c.ctx.Done()
@@ -150,8 +145,11 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 		for {
 			msgType, message, err := c.conn.ReadMessage()
 			if err != nil {
-				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage"))
-				continue
+				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, closing"))
+
+				c.Close()
+
+				break
 			}
 
 			if msgType == websocket.TextMessage && string(message) == "WITHDRAW" {

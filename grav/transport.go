@@ -71,7 +71,7 @@ type Connection interface {
 	// Wait for an incoming handshake and return the provided Ack to the remote connection
 	DoIncomingHandshake(HandshakeCallback) (*TransportHandshake, error)
 	// Close requests that the Connection close itself
-	Close()
+	Close() error
 }
 
 // TopicConnection is a connection to something via a bridge such as a topic

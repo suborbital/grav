@@ -233,8 +233,9 @@ func (e *Endpoint) DoIncomingHandshake(callback grav.HandshakeCallback) (*grav.T
 }
 
 // Close "closes" the connection
-func (e *Endpoint) Close() {
+func (e *Endpoint) Close() error {
 	// nothing to do
+	return nil
 }
 
 func (e *Endpoint) handleMessageRequest(req *http.Request) error {

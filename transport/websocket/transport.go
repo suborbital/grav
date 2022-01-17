@@ -280,9 +280,16 @@ func (c *Conn) DoIncomingHandshake(handshakeCallback grav.HandshakeCallback) (*g
 }
 
 // Close closes the underlying connection
-func (c *Conn) Close() {
+func (c *Conn) Close() error {
 	c.log.Debug("[transport-websocket] connection for", c.nodeUUID, "is closing")
-	c.conn.Close()
+
+	if err := c.conn.WriteMessage(websocket.CloseMessage, []byte("CLOSE")); err != nil {
+		return errors.Wrap(err, "[transport-websocket] failed to WriteMessage close message")
+	}
+
+	if err := c.conn.Close(); err != nil {
+		return errors.Wrap(err, "[transport-websocket] failed to Close connection")
+	}
 }
 
 // WriteMessage is a concurrent-safe wrapper around the websocket WriteMessage

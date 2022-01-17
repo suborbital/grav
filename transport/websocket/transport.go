@@ -150,8 +150,8 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 		for {
 			msgType, message, err := c.conn.ReadMessage()
 			if err != nil {
-				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, terminating connection"))
-				break
+				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage"))
+				continue
 			}
 
 			if msgType == websocket.TextMessage && string(message) == "WITHDRAW" {
@@ -282,10 +282,6 @@ func (c *Conn) DoIncomingHandshake(handshakeCallback grav.HandshakeCallback) (*g
 // Close closes the underlying connection
 func (c *Conn) Close() error {
 	c.log.Debug("[transport-websocket] connection for", c.nodeUUID, "is closing")
-
-	if err := c.conn.WriteMessage(websocket.CloseMessage, []byte("CLOSE")); err != nil {
-		return errors.Wrap(err, "[transport-websocket] failed to WriteMessage close message")
-	}
 
 	if err := c.conn.Close(); err != nil {
 		return errors.Wrap(err, "[transport-websocket] failed to Close connection")

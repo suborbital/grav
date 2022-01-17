@@ -290,6 +290,8 @@ func (c *Conn) Close() error {
 	if err := c.conn.Close(); err != nil {
 		return errors.Wrap(err, "[transport-websocket] failed to Close connection")
 	}
+
+	return nil
 }
 
 // WriteMessage is a concurrent-safe wrapper around the websocket WriteMessage

@@ -60,7 +60,7 @@ type Transport interface {
 // Connection represents a connection to another node
 type Connection interface {
 	// Called when the connection handshake is complete and the connection can actively start exchanging messages
-	// The Connection is responsible for sending a 'withdraw' message and halting any incoming messages
+	// The Connection is responsible for sending a 'withdraw' message when the provided context is canceled
 	Start(recvFunc ReceiveFunc, ctx context.Context)
 	// Send a message from the local instance to the connected node
 	Send(msg Message) error

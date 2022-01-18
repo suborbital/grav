@@ -295,7 +295,7 @@ func (h *hub) outgoingMessageHandler() MsgFunc {
 					if err == ErrNodeWithdrawn {
 						// that's fine, don't remove yet (it will be closed later)
 					} else {
-						if errors.Is(err, ErrConnectionClosed) {
+						if err == ErrConnectionClosed {
 							h.log.Debug("attempted to send on closed connection, will remove")
 						} else {
 							h.log.Warn("error sending to connection, will remove", uuid, ":", err.Error())

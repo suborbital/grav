@@ -1,7 +1,7 @@
 package grav
 
 const (
-	defaultBusChanSize = 512
+	defaultBusChanSize = 256
 )
 
 // messageBus is responsible for emitting messages among the connected pods

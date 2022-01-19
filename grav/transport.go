@@ -5,12 +5,6 @@ import (
 	"github.com/suborbital/vektor/vlog"
 )
 
-// TransportMsgTypeHandshake and others represent internal Transport message types used for handshakes and metadata transfer
-const (
-	TransportMsgTypeHandshake = 1
-	TransportMsgTypeUser      = 2
-)
-
 // ErrConnectionClosed and others are transport and connection related errors
 var (
 	ErrConnectionClosed    = errors.New("connection was closed")
@@ -18,6 +12,7 @@ var (
 	ErrBelongsToMismatch   = errors.New("new connection doesn't belongTo the same group or *")
 	ErrNotBridgeTransport  = errors.New("transport is not a bridge")
 	ErrBridgeOnlyTransport = errors.New("transport only supports bridge connection")
+	ErrNodeWithdrawn       = errors.New("node has withdrawn from the mesh")
 )
 
 var (
@@ -63,7 +58,8 @@ type Transport interface {
 // Connection represents a connection to another node
 type Connection interface {
 	// Called when the connection handshake is complete and the connection can actively start exchanging messages
-	Start(recvFunc ReceiveFunc)
+	// The Connection is responsible for sending a 'withdraw' message when the provided context is canceled
+	Start(recvFunc ReceiveFunc, signaler *WithdrawSignaler)
 	// Send a message from the local instance to the connected node
 	Send(msg Message) error
 	// CanReplace returns true if the connection can be replaced (i.e. is not a persistent connection like a websocket)
@@ -73,7 +69,7 @@ type Connection interface {
 	// Wait for an incoming handshake and return the provided Ack to the remote connection
 	DoIncomingHandshake(HandshakeCallback) (*TransportHandshake, error)
 	// Close requests that the Connection close itself
-	Close()
+	Close() error
 }
 
 // TopicConnection is a connection to something via a bridge such as a topic
@@ -86,15 +82,20 @@ type TopicConnection interface {
 
 // TransportHandshake represents a handshake sent to a node that you're trying to connect to
 type TransportHandshake struct {
-	UUID         string   `json:"uuid"`
-	BelongsTo    string   `json:"belongsTo"`
-	Capabilities []string `json:"capabilities"`
+	UUID      string   `json:"uuid"`
+	BelongsTo string   `json:"belongsTo"`
+	Interests []string `json:"interests"`
 }
 
 // TransportHandshakeAck represents a handshake response
 type TransportHandshakeAck struct {
-	Accept       bool     `json:"accept"`
-	UUID         string   `json:"uuid"`
-	BelongsTo    string   `json:"belongsTo"`
-	Capabilities []string `json:"capabilities"`
+	Accept    bool     `json:"accept"`
+	UUID      string   `json:"uuid"`
+	BelongsTo string   `json:"belongsTo"`
+	Interests []string `json:"interests"`
+}
+
+// TransportWithdraw represents a message sent to a peer indicating a withdrawal from the mesh
+type TransportWithdraw struct {
+	UUID string `json:"uuid"`
 }

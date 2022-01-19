@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	"sync/atomic"
+
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
 	"github.com/suborbital/grav/grav"
@@ -29,10 +31,14 @@ type Conn struct {
 	nodeUUID string
 	log      *vlog.Logger
 
-	conn  *websocket.Conn
-	cLock sync.Mutex
+	conn *websocket.Conn
+	lock sync.Mutex
+
+	selfWithdrawn atomic.Value
+	peerWithdrawn atomic.Value
 
 	recvFunc grav.ReceiveFunc
+	signaler *grav.WithdrawSignaler
 }
 
 // New creates a new websocket transport
@@ -75,10 +81,15 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	}
 
 	conn := &Conn{
-		log:   t.log,
-		conn:  c,
-		cLock: sync.Mutex{},
+		log:           t.log,
+		conn:          c,
+		selfWithdrawn: atomic.Value{},
+		peerWithdrawn: atomic.Value{},
+		lock:          sync.Mutex{},
 	}
+
+	conn.selfWithdrawn.Store(false)
+	conn.peerWithdrawn.Store(false)
 
 	return conn, nil
 }
@@ -106,38 +117,79 @@ func (t *Transport) HTTPHandlerFunc() http.HandlerFunc {
 		t.log.Debug("[transport-websocket] upgraded connection:", r.URL.String())
 
 		conn := &Conn{
-			conn: c,
-			log:  t.log,
+			conn:          c,
+			log:           t.log,
+			selfWithdrawn: atomic.Value{},
+			peerWithdrawn: atomic.Value{},
 		}
+
+		conn.selfWithdrawn.Store(false)
+		conn.peerWithdrawn.Store(false)
 
 		t.connectionFunc(conn)
 	}
 }
 
 // Start begins the receiving of messages
-func (c *Conn) Start(recvFunc grav.ReceiveFunc) {
+func (c *Conn) Start(recvFunc grav.ReceiveFunc, signaler *grav.WithdrawSignaler) {
 	c.recvFunc = recvFunc
+	c.signaler = signaler
 
-	c.conn.SetCloseHandler(func(code int, text string) error {
-		c.log.Warn(fmt.Sprintf("[transport-websocket] connection closing with code: %d", code))
-		return nil
-	})
+	go func() {
+		// wait until a withdraw happens and notify peer
+		<-c.signaler.Ctx.Done()
+
+		c.log.Info("[transport-websocket] connection context canceled, sending withdraw message")
+
+		if err := c.WriteMessage(websocket.TextMessage, []byte("WITHDRAW")); err != nil {
+			if err == grav.ErrNodeWithdrawn {
+				// that's fine, consider the withdraw completed
+				c.selfWithdrawn.Store(true)
+				c.signaler.DoneChan <- true
+			} else {
+				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdraw"))
+			}
+		}
+	}()
 
 	go func() {
 		for {
-			_, message, err := c.conn.ReadMessage()
+			msgType, message, err := c.conn.ReadMessage()
 			if err != nil {
-				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, terminating connection"))
+				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, closing"))
+
+				c.Close()
+
 				break
 			}
 
-			c.log.Debug("[transport-websocket] recieved message via", c.nodeUUID)
+			if msgType == websocket.TextMessage {
+
+				if string(message) == "WITHDRAW" {
+					c.log.Info("[transport-websocket] peer has withdrawn, marking connection")
+
+					if err := c.WriteMessage(websocket.TextMessage, []byte("WITHDRAW ACK")); err != nil {
+						c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdraw ack"))
+					}
+
+					c.peerWithdrawn.Store(true)
+				} else if string(message) == "WITHDRAW ACK" {
+					c.log.Info("[transport-websocket] peer acked withdraw")
+
+					c.selfWithdrawn.Store(true)
+					c.signaler.DoneChan <- true
+				}
+
+				continue
+			}
 
 			msg, err := grav.MsgFromBytes(message)
 			if err != nil {
 				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes"))
 				continue
 			}
+
+			c.log.Debug("[transport-websocket] received message", msg.UUID(), "via", c.nodeUUID)
 
 			// send to the Grav instance
 			c.recvFunc(msg)
@@ -154,17 +206,19 @@ func (c *Conn) Send(msg grav.Message) error {
 		return nil
 	}
 
-	c.log.Debug("[transport-websocket] sending message to connection", c.nodeUUID)
+	c.log.Debug("[transport-websocket] sending message", msg.UUID(), "to connection", c.nodeUUID)
 
-	if err := c.WriteMessage(grav.TransportMsgTypeUser, msgBytes); err != nil {
+	if err := c.WriteMessage(websocket.BinaryMessage, msgBytes); err != nil {
 		if errors.Is(err, websocket.ErrCloseSent) {
 			return grav.ErrConnectionClosed
+		} else if err == grav.ErrNodeWithdrawn {
+			return err
 		}
 
 		return errors.Wrap(err, "[transport-websocket] failed to WriteMessage")
 	}
 
-	c.log.Debug("[transport-websocket] sent message to connection", c.nodeUUID)
+	c.log.Debug("[transport-websocket] sent message", msg.UUID(), "to connection", c.nodeUUID)
 
 	return nil
 }
@@ -184,7 +238,7 @@ func (c *Conn) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*grav.Tr
 
 	c.log.Debug("[transport-websocket] sending handshake")
 
-	if err := c.WriteMessage(grav.TransportMsgTypeHandshake, handshakeJSON); err != nil {
+	if err := c.WriteMessage(websocket.BinaryMessage, handshakeJSON); err != nil {
 		return nil, errors.Wrap(err, "failed to WriteMessage handshake")
 	}
 
@@ -193,7 +247,7 @@ func (c *Conn) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*grav.Tr
 		return nil, errors.Wrap(err, "failed to ReadMessage for handshake ack, terminating connection")
 	}
 
-	if mt != grav.TransportMsgTypeHandshake {
+	if mt != websocket.BinaryMessage {
 		return nil, errors.New("first message recieved was not handshake ack")
 	}
 
@@ -217,7 +271,7 @@ func (c *Conn) DoIncomingHandshake(handshakeCallback grav.HandshakeCallback) (*g
 		return nil, errors.Wrap(err, "failed to ReadMessage for handshake, terminating connection")
 	}
 
-	if mt != grav.TransportMsgTypeHandshake {
+	if mt != websocket.BinaryMessage {
 		return nil, errors.New("first message recieved was not handshake")
 	}
 
@@ -237,7 +291,7 @@ func (c *Conn) DoIncomingHandshake(handshakeCallback grav.HandshakeCallback) (*g
 
 	c.log.Debug("[transport-websocket] sending handshake ack")
 
-	if err := c.WriteMessage(grav.TransportMsgTypeHandshake, ackJSON); err != nil {
+	if err := c.WriteMessage(websocket.BinaryMessage, ackJSON); err != nil {
 		return nil, errors.Wrap(err, "failed to WriteMessage handshake ack")
 	}
 
@@ -249,15 +303,24 @@ func (c *Conn) DoIncomingHandshake(handshakeCallback grav.HandshakeCallback) (*g
 }
 
 // Close closes the underlying connection
-func (c *Conn) Close() {
+func (c *Conn) Close() error {
 	c.log.Debug("[transport-websocket] connection for", c.nodeUUID, "is closing")
-	c.conn.Close()
+
+	if err := c.conn.Close(); err != nil {
+		return errors.Wrap(err, "[transport-websocket] failed to Close connection")
+	}
+
+	return nil
 }
 
 // WriteMessage is a concurrent-safe wrapper around the websocket WriteMessage
 func (c *Conn) WriteMessage(messageType int, data []byte) error {
-	c.cLock.Lock()
-	defer c.cLock.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if withdrawn := c.peerWithdrawn.Load(); withdrawn.(bool) {
+		return grav.ErrNodeWithdrawn
+	}
 
 	return c.conn.WriteMessage(messageType, data)
 }

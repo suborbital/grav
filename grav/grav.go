@@ -15,12 +15,12 @@ var (
 
 // Grav represents a Grav message bus instance
 type Grav struct {
-	NodeUUID     string
-	BelongsTo    string
-	Capabilities []string
-	bus          *messageBus
-	logger       *vlog.Logger
-	hub          *hub
+	NodeUUID  string
+	BelongsTo string
+	Interests []string
+	bus       *messageBus
+	logger    *vlog.Logger
+	hub       *hub
 }
 
 // New creates a new Grav with the provided options
@@ -30,11 +30,11 @@ func New(opts ...OptionsModifier) *Grav {
 	options := newOptionsWithModifiers(opts...)
 
 	g := &Grav{
-		NodeUUID:     nodeUUID,
-		BelongsTo:    options.BelongsTo,
-		Capabilities: options.Capabilities,
-		bus:          newMessageBus(),
-		logger:       options.Logger,
+		NodeUUID:  nodeUUID,
+		BelongsTo: options.BelongsTo,
+		Interests: options.Interests,
+		bus:       newMessageBus(),
+		logger:    options.Logger,
 	}
 
 	// the hub handles coordinating the transport and discovery plugins
@@ -73,6 +73,18 @@ func (g *Grav) ConnectBridgeTopic(topic string) error {
 // Messages are load balanced between the connections that advertise the capability in question.
 func (g *Grav) Tunnel(capability string, msg Message) error {
 	return g.hub.sendTunneledMessage(capability, msg)
+}
+
+// Withdraw cancels discovery, sends withdraw messages to all peers,
+// and returns when all peers have acknowledged the withdraw
+func (g *Grav) Withdraw() error {
+	return g.hub.withdraw()
+}
+
+// Stop stops Grav's meshing entirely, causing all connections to peers to close.
+// It is reccomended to call `Withdraw` first to give peers notice and stop recieving messages
+func (g *Grav) Stop() error {
+	return g.hub.stop()
 }
 
 func (g *Grav) connectWithOpts(opts *podOpts) *Pod {

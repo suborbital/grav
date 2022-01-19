@@ -1,7 +1,9 @@
 package grav
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/suborbital/vektor/vlog"
@@ -11,14 +13,16 @@ const capabilityBufferSize = 256
 
 // hub is responsible for coordinating the transport and discovery plugins
 type hub struct {
-	nodeUUID     string
-	belongsTo    string
-	capabilities []string
-	transport    Transport
-	discovery    Discovery
-	log          *vlog.Logger
-	pod          *Pod
-	connectFunc  func() *Pod
+	nodeUUID    string
+	belongsTo   string
+	interests   []string
+	transport   Transport
+	discovery   Discovery
+	context     context.Context
+	cancelFunc  func()
+	log         *vlog.Logger
+	pod         *Pod
+	connectFunc func() *Pod
 
 	connections      map[string]*connectionHolder
 	topicConnections map[string]TopicConnection
@@ -29,18 +33,23 @@ type hub struct {
 }
 
 type connectionHolder struct {
-	Conn         Connection
-	BelongsTo    string
-	Capabilities []string
+	Conn      Connection
+	Signaler  *WithdrawSignaler
+	BelongsTo string
+	Interests []string
 }
 
 func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	h := &hub{
 		nodeUUID:              nodeUUID,
 		belongsTo:             options.BelongsTo,
-		capabilities:          options.Capabilities,
+		interests:             options.Interests,
 		transport:             options.Transport,
 		discovery:             options.Discovery,
+		context:               ctx,
+		cancelFunc:            cancel,
 		log:                   options.Logger,
 		pod:                   connectFunc(),
 		connectFunc:           connectFunc,
@@ -64,26 +73,7 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 
 		go func() {
 			if err := h.transport.Setup(transportOpts, h.handleIncomingConnection, h.findConnection); err != nil {
-				options.Logger.Error(errors.Wrap(err, "failed to Setup transport"))
-			}
-
-			// if Grav's context is ever canceled, close all connections
-			done := options.Context.Done()
-			if done != nil {
-				<-done
-
-				if h.discovery != nil {
-					h.discovery.Stop()
-				}
-
-				h.lock.Lock()
-				defer h.lock.Unlock()
-
-				for uuid := range h.connections {
-					conn := h.connections[uuid]
-					conn.Conn.Close()
-					delete(h.connections, uuid)
-				}
+				h.log.Error(errors.Wrap(err, "failed to Setup transport"))
 			}
 		}()
 
@@ -173,7 +163,7 @@ func (h *hub) connectBridgeTopic(topic string) error {
 }
 
 func (h *hub) setupOutgoingConnection(connection Connection, uuid string) {
-	handshake := &TransportHandshake{h.nodeUUID, h.belongsTo, h.capabilities}
+	handshake := &TransportHandshake{h.nodeUUID, h.belongsTo, h.interests}
 
 	ack, err := connection.DoOutgoingHandshake(handshake)
 	if err != nil {
@@ -200,7 +190,7 @@ func (h *hub) setupOutgoingConnection(connection Connection, uuid string) {
 		return
 	}
 
-	h.setupNewConnection(connection, uuid, ack.BelongsTo, ack.Capabilities)
+	h.setupNewConnection(connection, uuid, ack.BelongsTo, ack.Interests)
 }
 
 func (h *hub) handleIncomingConnection(connection Connection) {
@@ -216,7 +206,7 @@ func (h *hub) handleIncomingConnection(connection Connection) {
 			ack.Accept = false
 		} else {
 			ack.BelongsTo = h.belongsTo
-			ack.Capabilities = h.capabilities
+			ack.Interests = h.interests
 		}
 
 		return ack
@@ -241,10 +231,10 @@ func (h *hub) handleIncomingConnection(connection Connection) {
 		return
 	}
 
-	h.setupNewConnection(connection, handshake.UUID, handshake.BelongsTo, handshake.Capabilities)
+	h.setupNewConnection(connection, handshake.UUID, handshake.BelongsTo, handshake.Interests)
 }
 
-func (h *hub) setupNewConnection(connection Connection, uuid, belongsTo string, capabilities []string) {
+func (h *hub) setupNewConnection(connection Connection, uuid, belongsTo string, interests []string) {
 	// if an existing connection is found, check if it can be replaced and do so if possible
 	if existing, exists := h.findConnection(uuid); exists {
 		if !existing.CanReplace() {
@@ -252,10 +242,10 @@ func (h *hub) setupNewConnection(connection Connection, uuid, belongsTo string, 
 			h.log.Debug("encountered duplicate connection, discarding")
 		} else {
 			existing.Close()
-			h.replaceConnection(connection, uuid, belongsTo, capabilities)
+			h.replaceConnection(connection, uuid, belongsTo, interests)
 		}
 	} else {
-		h.addConnection(connection, uuid, belongsTo, capabilities)
+		h.addConnection(connection, uuid, belongsTo, interests)
 	}
 }
 
@@ -273,13 +263,18 @@ func (h *hub) outgoingMessageHandler() MsgFunc {
 				h.log.Debug("sending message", msg.UUID(), "to", uuid)
 
 				if err := conn.Conn.Send(msg); err != nil {
-					if errors.Is(err, ErrConnectionClosed) {
-						h.log.Debug("attempted to send on closed connection, will remove")
+					if err == ErrNodeWithdrawn {
+						// that's fine, don't remove yet (it will be closed later)
 					} else {
-						h.log.Warn("error sending to connection, will remove", uuid, ":", err.Error())
+						if err == ErrConnectionClosed {
+							h.log.Debug("attempted to send on closed connection, will remove")
+						} else {
+							h.log.Warn("error sending to connection, will remove", uuid, ":", err.Error())
+						}
+
+						h.removeConnection(uuid)
 					}
 
-					h.removeConnection(uuid)
 				}
 			}()
 		}
@@ -296,23 +291,26 @@ func (h *hub) incomingMessageHandler(uuid string) ReceiveFunc {
 	}
 }
 
-func (h *hub) addConnection(connection Connection, uuid, belongsTo string, capabilities []string) {
+func (h *hub) addConnection(connection Connection, uuid, belongsTo string, interests []string) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
 	h.log.Debug("adding connection for", uuid)
 
-	connection.Start(h.incomingMessageHandler(uuid))
+	signaler := NewSignaler(h.context)
+
+	connection.Start(h.incomingMessageHandler(uuid), signaler)
 
 	holder := &connectionHolder{
-		Conn:         connection,
-		BelongsTo:    belongsTo,
-		Capabilities: capabilities,
+		Conn:      connection,
+		Signaler:  signaler,
+		BelongsTo: belongsTo,
+		Interests: interests,
 	}
 
 	h.connections[uuid] = holder
 
-	for _, c := range capabilities {
+	for _, c := range interests {
 		if _, exists := h.capabilityUUIDBuffers[c]; !exists {
 			h.capabilityUUIDBuffers[c] = NewMsgBuffer(capabilityBufferSize)
 		}
@@ -332,7 +330,7 @@ func (h *hub) addTopicConnection(connection TopicConnection, topic string) {
 	h.topicConnections[topic] = connection
 }
 
-func (h *hub) replaceConnection(newConnection Connection, uuid, belongsTo string, capabilities []string) {
+func (h *hub) replaceConnection(newConnection Connection, uuid, belongsTo string, interests []string) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
@@ -340,12 +338,15 @@ func (h *hub) replaceConnection(newConnection Connection, uuid, belongsTo string
 
 	delete(h.connections, uuid)
 
-	newConnection.Start(h.incomingMessageHandler(uuid))
+	signaler := NewSignaler(h.context)
+
+	newConnection.Start(h.incomingMessageHandler(uuid), signaler)
 
 	newHolder := &connectionHolder{
-		Conn:         newConnection,
-		BelongsTo:    belongsTo,
-		Capabilities: capabilities,
+		Conn:      newConnection,
+		Signaler:  signaler,
+		BelongsTo: belongsTo,
+		Interests: interests,
 	}
 
 	h.connections[uuid] = newHolder
@@ -397,4 +398,68 @@ func (h *hub) sendTunneledMessage(capability string, msg Message) error {
 	}
 
 	return ErrTunnelNotEstablished
+}
+
+func (h *hub) withdraw() error {
+	if h.discovery != nil {
+		h.discovery.Stop()
+	}
+
+	// calling cancelFunc will cancel h.context, which signals
+	// all active connections to start the withdraw procedure
+	h.cancelFunc()
+
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	// the withdraw attempt will time out after 5 seconds
+	timeoutChan := time.After(time.Second * 5)
+	doneChan := make(chan bool)
+
+	go func() {
+		count := len(h.connections)
+
+		// continually go through each connection and check if its withdraw is complete
+		// until we've gotten the signal from every single one
+		for {
+			for uuid := range h.connections {
+				conn := h.connections[uuid]
+
+				select {
+				case <-conn.Signaler.DoneChan:
+					count--
+				default:
+					//continue
+				}
+			}
+
+			if count == 0 {
+				doneChan <- true
+				break
+			}
+		}
+	}()
+
+	// return when either the withdraw is complete or we timed out
+	select {
+	case <-doneChan:
+		//cool, done
+	case <-timeoutChan:
+		return ErrWaitTimeout
+	}
+
+	return nil
+}
+
+func (h *hub) stop() error {
+	var lastErr error
+
+	for _, c := range h.connections {
+		if err := c.Conn.Close(); err != nil {
+			lastErr = err
+			h.log.Error(errors.Wrap(err, "failed to Close connection"))
+		}
+	}
+
+	return lastErr
 }

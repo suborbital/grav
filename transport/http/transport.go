@@ -171,7 +171,7 @@ func (t *Transport) handleRequest(req *http.Request) (interface{}, error) {
 }
 
 // Start "starts" the connection
-func (e *Endpoint) Start(recvFunc grav.ReceiveFunc) {
+func (e *Endpoint) Start(recvFunc grav.ReceiveFunc, signaler *grav.WithdrawSignaler) {
 	e.receiveFunc = recvFunc
 }
 
@@ -232,8 +232,9 @@ func (e *Endpoint) DoIncomingHandshake(callback grav.HandshakeCallback) (*grav.T
 }
 
 // Close "closes" the connection
-func (e *Endpoint) Close() {
+func (e *Endpoint) Close() error {
 	// nothing to do
+	return nil
 }
 
 func (e *Endpoint) handleMessageRequest(req *http.Request) error {

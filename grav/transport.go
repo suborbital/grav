@@ -1,8 +1,6 @@
 package grav
 
 import (
-	"context"
-
 	"github.com/pkg/errors"
 	"github.com/suborbital/vektor/vlog"
 )
@@ -61,7 +59,7 @@ type Transport interface {
 type Connection interface {
 	// Called when the connection handshake is complete and the connection can actively start exchanging messages
 	// The Connection is responsible for sending a 'withdraw' message when the provided context is canceled
-	Start(recvFunc ReceiveFunc, ctx context.Context)
+	Start(recvFunc ReceiveFunc, signaler *WithdrawSignaler)
 	// Send a message from the local instance to the connected node
 	Send(msg Message) error
 	// CanReplace returns true if the connection can be replaced (i.e. is not a persistent connection like a websocket)

@@ -13,16 +13,16 @@ const capabilityBufferSize = 256
 
 // hub is responsible for coordinating the transport and discovery plugins
 type hub struct {
-	nodeUUID     string
-	belongsTo    string
-	interests    []string
-	transport    Transport
-	discovery    Discovery
-	context      context.Context
-	withdrawFunc func()
-	log          *vlog.Logger
-	pod          *Pod
-	connectFunc  func() *Pod
+	nodeUUID    string
+	belongsTo   string
+	interests   []string
+	transport   Transport
+	discovery   Discovery
+	context     context.Context
+	cancelFunc  func()
+	log         *vlog.Logger
+	pod         *Pod
+	connectFunc func() *Pod
 
 	connections      map[string]*connectionHolder
 	topicConnections map[string]TopicConnection
@@ -34,20 +34,13 @@ type hub struct {
 
 type connectionHolder struct {
 	Conn      Connection
+	Signaler  *WithdrawSignaler
 	BelongsTo string
 	Interests []string
 }
 
 func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 	ctx, cancel := context.WithCancel(context.Background())
-
-	withdraw := func() {
-		cancel()
-
-		// this sleep matches the sleep below so that the hub.withdraw
-		// method doesn't return until the withdraw sequence completes
-		time.Sleep(time.Second * 3)
-	}
 
 	h := &hub{
 		nodeUUID:              nodeUUID,
@@ -56,7 +49,7 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 		transport:             options.Transport,
 		discovery:             options.Discovery,
 		context:               ctx,
-		withdrawFunc:          withdraw,
+		cancelFunc:            cancel,
 		log:                   options.Logger,
 		pod:                   connectFunc(),
 		connectFunc:           connectFunc,
@@ -81,28 +74,6 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 		go func() {
 			if err := h.transport.Setup(transportOpts, h.handleIncomingConnection, h.findConnection); err != nil {
 				h.log.Error(errors.Wrap(err, "failed to Setup transport"))
-			}
-
-			// if Grav's context is ever canceled, close all connections
-			// all of Grav's connections are also checking for a closed context
-			// to send withdraw messages, so wait 3s before closing.
-			<-h.context.Done()
-
-			if h.discovery != nil {
-				h.discovery.Stop()
-			}
-
-			time.Sleep(time.Second * 3)
-
-			h.lock.Lock()
-			defer h.lock.Unlock()
-
-			for uuid := range h.connections {
-				conn := h.connections[uuid]
-
-				if err := conn.Conn.Close(); err != nil {
-					h.log.Error(errors.Wrap(err, "failed to Close connection"))
-				}
 			}
 		}()
 
@@ -326,10 +297,13 @@ func (h *hub) addConnection(connection Connection, uuid, belongsTo string, inter
 
 	h.log.Debug("adding connection for", uuid)
 
-	connection.Start(h.incomingMessageHandler(uuid), h.context)
+	signaler := NewSignaler(h.context)
+
+	connection.Start(h.incomingMessageHandler(uuid), signaler)
 
 	holder := &connectionHolder{
 		Conn:      connection,
+		Signaler:  signaler,
 		BelongsTo: belongsTo,
 		Interests: interests,
 	}
@@ -364,10 +338,13 @@ func (h *hub) replaceConnection(newConnection Connection, uuid, belongsTo string
 
 	delete(h.connections, uuid)
 
-	newConnection.Start(h.incomingMessageHandler(uuid), h.context)
+	signaler := NewSignaler(h.context)
+
+	newConnection.Start(h.incomingMessageHandler(uuid), signaler)
 
 	newHolder := &connectionHolder{
 		Conn:      newConnection,
+		Signaler:  signaler,
 		BelongsTo: belongsTo,
 		Interests: interests,
 	}
@@ -421,4 +398,68 @@ func (h *hub) sendTunneledMessage(capability string, msg Message) error {
 	}
 
 	return ErrTunnelNotEstablished
+}
+
+func (h *hub) withdraw() error {
+	if h.discovery != nil {
+		h.discovery.Stop()
+	}
+
+	// calling cancelFunc will cancel h.context, which signals
+	// all active connections to start the withdraw procedure
+	h.cancelFunc()
+
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	// the withdraw attempt will time out after 5 seconds
+	timeoutChan := time.After(time.Second * 5)
+	doneChan := make(chan bool)
+
+	go func() {
+		count := len(h.connections)
+
+		// continually go through each connection and check if its withdraw is complete
+		// until we've gotten the signal from every single one
+		for {
+			for uuid := range h.connections {
+				conn := h.connections[uuid]
+
+				select {
+				case <-conn.Signaler.DoneChan:
+					count--
+				default:
+					//continue
+				}
+			}
+
+			if count == 0 {
+				doneChan <- true
+				break
+			}
+		}
+	}()
+
+	// return when either the withdraw is complete or we timed out
+	select {
+	case <-doneChan:
+		//cool, done
+	case <-timeoutChan:
+		return ErrWaitTimeout
+	}
+
+	return nil
+}
+
+func (h *hub) stop() error {
+	var lastErr error
+
+	for _, c := range h.connections {
+		if err := c.Conn.Close(); err != nil {
+			lastErr = err
+			h.log.Error(errors.Wrap(err, "failed to Close connection"))
+		}
+	}
+
+	return lastErr
 }

@@ -76,10 +76,15 @@ func (g *Grav) Tunnel(capability string, msg Message) error {
 }
 
 // Withdraw cancels discovery, sends withdraw messages to all peers,
-// waits 3 seconds to allow in-flight messages to be handled, then closes
-// all connections to peers before returning to the caller. Discovery cannot be restarted.
-func (g *Grav) Withdraw() {
-	g.hub.withdrawFunc()
+// and returns when all peers have acknowledged the withdraw
+func (g *Grav) Withdraw() error {
+	return g.hub.withdraw()
+}
+
+// Stop stops Grav's meshing entirely, causing all connections to peers to close.
+// It is reccomended to call `Withdraw` first to give peers notice and stop recieving messages
+func (g *Grav) Stop() error {
+	return g.hub.stop()
 }
 
 func (g *Grav) connectWithOpts(opts *podOpts) *Pod {

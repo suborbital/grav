@@ -1,7 +1,6 @@
 package websocket
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -32,12 +31,14 @@ type Conn struct {
 	nodeUUID string
 	log      *vlog.Logger
 
-	conn      *websocket.Conn
-	withdrawn atomic.Value
-	lock      sync.Mutex
+	conn *websocket.Conn
+	lock sync.Mutex
+
+	selfWithdrawn atomic.Value
+	peerWithdrawn atomic.Value
 
 	recvFunc grav.ReceiveFunc
-	ctx      context.Context
+	signaler *grav.WithdrawSignaler
 }
 
 // New creates a new websocket transport
@@ -80,13 +81,15 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	}
 
 	conn := &Conn{
-		log:       t.log,
-		conn:      c,
-		withdrawn: atomic.Value{},
-		lock:      sync.Mutex{},
+		log:           t.log,
+		conn:          c,
+		selfWithdrawn: atomic.Value{},
+		peerWithdrawn: atomic.Value{},
+		lock:          sync.Mutex{},
 	}
 
-	conn.withdrawn.Store(false)
+	conn.selfWithdrawn.Store(false)
+	conn.peerWithdrawn.Store(false)
 
 	return conn, nil
 }
@@ -114,30 +117,38 @@ func (t *Transport) HTTPHandlerFunc() http.HandlerFunc {
 		t.log.Debug("[transport-websocket] upgraded connection:", r.URL.String())
 
 		conn := &Conn{
-			conn:      c,
-			log:       t.log,
-			withdrawn: atomic.Value{},
+			conn:          c,
+			log:           t.log,
+			selfWithdrawn: atomic.Value{},
+			peerWithdrawn: atomic.Value{},
 		}
 
-		conn.withdrawn.Store(false)
+		conn.selfWithdrawn.Store(false)
+		conn.peerWithdrawn.Store(false)
 
 		t.connectionFunc(conn)
 	}
 }
 
 // Start begins the receiving of messages
-func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
+func (c *Conn) Start(recvFunc grav.ReceiveFunc, signaler *grav.WithdrawSignaler) {
 	c.recvFunc = recvFunc
-	c.ctx = ctx
+	c.signaler = signaler
 
 	go func() {
-		// after recieving a message, check to see if we have withdrawn before receiving again
-		<-c.ctx.Done()
+		// wait until a withdraw happens and notify peer
+		<-c.signaler.Ctx.Done()
 
 		c.log.Info("[transport-websocket] connection context canceled, sending withdraw message")
 
 		if err := c.WriteMessage(websocket.TextMessage, []byte("WITHDRAW")); err != nil {
-			c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdraw"))
+			if err == grav.ErrNodeWithdrawn {
+				// that's fine, consider the withdraw completed
+				c.selfWithdrawn.Store(true)
+				c.signaler.DoneChan <- true
+			} else {
+				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdraw"))
+			}
 		}
 	}()
 
@@ -152,9 +163,23 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, ctx context.Context) {
 				break
 			}
 
-			if msgType == websocket.TextMessage && string(message) == "WITHDRAW" {
-				c.log.Info("[transport-websocket] peer has withdrawn, marking connection")
-				c.withdrawn.Store(true)
+			if msgType == websocket.TextMessage {
+
+				if string(message) == "WITHDRAW" {
+					c.log.Info("[transport-websocket] peer has withdrawn, marking connection")
+
+					c.peerWithdrawn.Store(true)
+
+					if err := c.WriteMessage(websocket.TextMessage, []byte("WITHDRAW ACK")); err != nil {
+						c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdraw ack"))
+					}
+				} else if string(message) == "WITHDRAW ACK" {
+					c.log.Info("[transport-websocket] peer acked withdraw")
+
+					c.selfWithdrawn.Store(true)
+					c.signaler.DoneChan <- true
+				}
+
 				continue
 			}
 
@@ -293,7 +318,7 @@ func (c *Conn) WriteMessage(messageType int, data []byte) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if withdrawn := c.withdrawn.Load(); withdrawn.(bool) {
+	if withdrawn := c.peerWithdrawn.Load(); withdrawn.(bool) {
 		return grav.ErrNodeWithdrawn
 	}
 

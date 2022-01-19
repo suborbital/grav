@@ -168,11 +168,11 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, signaler *grav.WithdrawSignaler)
 				if string(message) == "WITHDRAW" {
 					c.log.Info("[transport-websocket] peer has withdrawn, marking connection")
 
-					c.peerWithdrawn.Store(true)
-
 					if err := c.WriteMessage(websocket.TextMessage, []byte("WITHDRAW ACK")); err != nil {
 						c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdraw ack"))
 					}
+
+					c.peerWithdrawn.Store(true)
 				} else if string(message) == "WITHDRAW ACK" {
 					c.log.Info("[transport-websocket] peer acked withdraw")
 

@@ -15,8 +15,6 @@ type Transport struct {
 	log  *vlog.Logger
 
 	endpoint string
-
-	connectionFunc func(grav.Connection)
 }
 
 // Conn implements transport.TopicConnection and represents a subscribe/send pair for a Kafka topic
@@ -37,27 +35,16 @@ func New(endpoint string) (*Transport, error) {
 	return t, nil
 }
 
-// Type returns the transport's type
-func (t *Transport) Type() grav.TransportType {
-	return grav.TransportTypeBridge
-}
-
 // Setup sets up the transport
-func (t *Transport) Setup(opts *grav.TransportOpts, connFunc grav.ConnectFunc, findFunc grav.FindFunc) error {
+func (t *Transport) Setup(opts *grav.TransportOpts) error {
 	t.opts = opts
 	t.log = opts.Logger
-	t.connectionFunc = connFunc
 
 	return nil
 }
 
-// CreateConnection adds an endpoint to emit messages to
-func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
-	return nil, grav.ErrBridgeOnlyTransport
-}
-
-// ConnectBridgeTopic connects to a topic if the transport is a bridge
-func (t *Transport) ConnectBridgeTopic(topic string) (grav.TopicConnection, error) {
+// ConnectTopic connects to a topic if the transport is a bridge
+func (t *Transport) ConnectTopic(topic string) (grav.BridgeConnection, error) {
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(t.endpoint),
 		kgo.ConsumeTopics(topic),

@@ -8,15 +8,18 @@ import (
 	"strings"
 	"sync"
 
-	"sync/atomic"
-
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
 	"github.com/suborbital/grav/grav"
 	"github.com/suborbital/vektor/vlog"
 )
 
-const MsgTypeWebsocketMessage = "websocket.message"
+const (
+	MsgTypeWebsocketMessage = "websocket.message"
+
+	withdrawMessage    = "WITHDRAW"
+	withdrawAckMessage = "WITHDRAW ACK"
+)
 
 var upgrader = websocket.Upgrader{}
 
@@ -25,7 +28,7 @@ type Transport struct {
 	opts *grav.TransportOpts
 	log  *vlog.Logger
 
-	connectionFunc func(grav.Connection)
+	connectionFunc grav.ConnectFunc
 }
 
 // Conn implements transport.Connection and represents a websocket connection
@@ -36,11 +39,7 @@ type Conn struct {
 	conn *websocket.Conn
 	lock sync.Mutex
 
-	selfWithdrawn atomic.Value
-	peerWithdrawn atomic.Value
-
 	recvFunc grav.ReceiveFunc
-	signaler *grav.WithdrawSignaler
 }
 
 // New creates a new websocket transport
@@ -50,13 +49,8 @@ func New() *Transport {
 	return t
 }
 
-// Type returns the transport's type
-func (t *Transport) Type() grav.TransportType {
-	return grav.TransportTypeMesh
-}
-
 // Setup sets up the transport
-func (t *Transport) Setup(opts *grav.TransportOpts, connFunc grav.ConnectFunc, findFunc grav.FindFunc) error {
+func (t *Transport) Setup(opts *grav.TransportOpts, connFunc grav.ConnectFunc) error {
 	// independent serving is not yet implemented, use the HTTP handler
 
 	t.opts = opts
@@ -83,22 +77,12 @@ func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
 	}
 
 	conn := &Conn{
-		log:           t.log,
-		conn:          c,
-		selfWithdrawn: atomic.Value{},
-		peerWithdrawn: atomic.Value{},
-		lock:          sync.Mutex{},
+		log:  t.log,
+		conn: c,
+		lock: sync.Mutex{},
 	}
 
-	conn.selfWithdrawn.Store(false)
-	conn.peerWithdrawn.Store(false)
-
 	return conn, nil
-}
-
-// ConnectBridgeTopic connects to a topic if the transport is a bridge
-func (t *Transport) ConnectBridgeTopic(topic string) (grav.TopicConnection, error) {
-	return nil, grav.ErrNotBridgeTransport
 }
 
 // HTTPHandlerFunc returns an http.HandlerFunc for incoming connections
@@ -119,94 +103,19 @@ func (t *Transport) HTTPHandlerFunc() http.HandlerFunc {
 		t.log.Debug("[transport-websocket] upgraded connection:", r.URL.String())
 
 		conn := &Conn{
-			conn:          c,
-			log:           t.log,
-			selfWithdrawn: atomic.Value{},
-			peerWithdrawn: atomic.Value{},
+			conn: c,
+			log:  t.log,
 		}
-
-		conn.selfWithdrawn.Store(false)
-		conn.peerWithdrawn.Store(false)
 
 		t.connectionFunc(conn)
 	}
 }
 
-// Start begins the receiving of messages
-func (c *Conn) Start(recvFunc grav.ReceiveFunc, signaler *grav.WithdrawSignaler) {
-	c.recvFunc = recvFunc
-	c.signaler = signaler
-
-	go func() {
-		// wait until a withdraw happens and notify peer
-		<-c.signaler.Ctx.Done()
-
-		c.log.Info("[transport-websocket] connection context canceled, sending withdraw message")
-
-		if err := c.WriteMessage(websocket.TextMessage, []byte("WITHDRAW")); err != nil {
-			if err == grav.ErrNodeWithdrawn {
-				// that's fine, consider the withdraw completed
-				c.selfWithdrawn.Store(true)
-				c.signaler.DoneChan <- true
-			} else {
-				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdraw"))
-			}
-		}
-	}()
-
-	go func() {
-		for {
-			msgType, message, err := c.conn.ReadMessage()
-			if err != nil {
-				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to ReadMessage, closing"))
-
-				c.Close()
-
-				break
-			}
-
-			if msgType == websocket.TextMessage {
-
-				if string(message) == "WITHDRAW" {
-					c.log.Info("[transport-websocket] peer has withdrawn, marking connection")
-
-					if err := c.WriteMessage(websocket.TextMessage, []byte("WITHDRAW ACK")); err != nil {
-						c.log.Error(errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdraw ack"))
-					}
-
-					c.peerWithdrawn.Store(true)
-				} else if string(message) == "WITHDRAW ACK" {
-					c.log.Info("[transport-websocket] peer acked withdraw")
-
-					c.selfWithdrawn.Store(true)
-					c.signaler.DoneChan <- true
-				}
-
-				continue
-			}
-
-			msg, err := grav.MsgFromBytes(message)
-			if err != nil {
-				c.log.Debug(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes, falling back to raw data").Error())
-
-				msg = grav.NewMsg(MsgTypeWebsocketMessage, message)
-			}
-
-			c.log.Debug("[transport-websocket] received message", msg.UUID(), "via", c.nodeUUID)
-
-			// send to the Grav instance
-			c.recvFunc(msg)
-		}
-	}()
-}
-
-// Send sends a message to the connection
-func (c *Conn) Send(msg grav.Message) error {
+// SendMsg sends a message to the connection
+func (c *Conn) SendMsg(msg grav.Message) error {
 	msgBytes, err := msg.Marshal()
 	if err != nil {
-		// not exactly sure what to do here (we don't want this going into the dead letter queue)
-		c.log.Error(errors.Wrap(err, "[transport-websocket] failed to Marshal message"))
-		return nil
+		return errors.Wrap(err, "[transport-websocket] failed to Marshal message")
 	}
 
 	c.log.Debug("[transport-websocket] sending message", msg.UUID(), "to connection", c.nodeUUID)
@@ -226,14 +135,35 @@ func (c *Conn) Send(msg grav.Message) error {
 	return nil
 }
 
-// CanReplace returns true if the connection can be replaced
-func (c *Conn) CanReplace() bool {
-	return false
+func (c *Conn) ReadMsg() (grav.Message, *grav.Withdraw, error) {
+	msgType, message, err := c.conn.ReadMessage()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "[transport-websocket] failed to ReadMessage, closing")
+	}
+
+	if msgType == websocket.TextMessage {
+		if string(message) == withdrawMessage {
+			// let Grav know this message was a withdraw
+			return nil, &grav.Withdraw{Ack: false}, nil
+		} else if string(message) == withdrawAckMessage {
+			// let Grav know the peer acknowledged our withdraw
+			return nil, &grav.Withdraw{Ack: true}, nil
+		}
+	}
+
+	msg, err := grav.MsgFromBytes(message)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes")
+	}
+
+	c.log.Debug("[transport-websocket] received message", msg.UUID(), "via", c.nodeUUID)
+
+	return msg, nil, nil
 }
 
-// DoOutgoingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
+// OutgoingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
 // so that it can be validated against the UUID that was provided in discovery (or if none was provided)
-func (c *Conn) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*grav.TransportHandshakeAck, error) {
+func (c *Conn) OutgoingHandshake(handshake *grav.TransportHandshake) (*grav.TransportHandshakeAck, error) {
 	handshakeJSON, err := json.Marshal(handshake)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to Marshal handshake JSON")
@@ -266,43 +196,57 @@ func (c *Conn) DoOutgoingHandshake(handshake *grav.TransportHandshake) (*grav.Tr
 	return &ack, nil
 }
 
-// DoIncomingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
+// IncomingHandshake performs a connection handshake and returns the UUID of the node that we're connected to
 // so that it can be validated against the UUID that was provided in discovery (or if none was provided)
-func (c *Conn) DoIncomingHandshake(handshakeCallback grav.HandshakeCallback) (*grav.TransportHandshake, error) {
+func (c *Conn) IncomingHandshake(handshakeCallback grav.HandshakeCallback) error {
 	mt, message, err := c.conn.ReadMessage()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to ReadMessage for handshake, terminating connection")
+		return errors.Wrap(err, "failed to ReadMessage for handshake, terminating connection")
 	}
 
 	if mt != websocket.BinaryMessage {
-		return nil, errors.New("first message recieved was not handshake")
+		return errors.New("first message recieved was not handshake")
 	}
 
 	c.log.Debug("[transport-websocket] recieved handshake")
 
 	handshake := &grav.TransportHandshake{}
 	if err := json.Unmarshal(message, handshake); err != nil {
-		return nil, errors.Wrap(err, "failed to Unmarshal handshake")
+		return errors.Wrap(err, "failed to Unmarshal handshake")
 	}
 
 	ack := handshakeCallback(handshake)
 
 	ackJSON, err := json.Marshal(ack)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to Marshal handshake ack JSON")
+		return errors.Wrap(err, "failed to Marshal handshake ack JSON")
 	}
 
 	c.log.Debug("[transport-websocket] sending handshake ack")
 
 	if err := c.WriteMessage(websocket.BinaryMessage, ackJSON); err != nil {
-		return nil, errors.Wrap(err, "failed to WriteMessage handshake ack")
+		return errors.Wrap(err, "failed to WriteMessage handshake ack")
 	}
 
 	c.log.Debug("[transport-websocket] sent handshake ack")
 
 	c.nodeUUID = handshake.UUID
 
-	return handshake, nil
+	return nil
+}
+
+// SendWithdraw sends a withdraw message to the peer
+func (c *Conn) SendWithdraw(withdraw *grav.Withdraw) error {
+	message := withdrawMessage
+	if withdraw.Ack {
+		message = withdrawAckMessage
+	}
+
+	if err := c.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
+		return errors.Wrap(err, "[transport-websocket] failed to WriteMessage for withdraw")
+	}
+
+	return nil
 }
 
 // Close closes the underlying connection
@@ -320,10 +264,6 @@ func (c *Conn) Close() error {
 func (c *Conn) WriteMessage(messageType int, data []byte) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
-	if withdrawn := c.peerWithdrawn.Load(); withdrawn.(bool) {
-		return grav.ErrNodeWithdrawn
-	}
 
 	return c.conn.WriteMessage(messageType, data)
 }

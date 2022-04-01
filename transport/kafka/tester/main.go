@@ -24,11 +24,11 @@ func main() {
 		grav.UseTransport(knats),
 	)
 
-	if err := g.ConnectBridgeTopic(grav.MsgTypeDefault); err != nil {
+	if err := g.ConnectBridgeTopic("something.in"); err != nil {
 		log.Fatal(errors.Wrap(err, "failed to ConnectTopic"))
 	}
 
-	if err := g.ConnectBridgeTopic("grav.reply"); err != nil {
+	if err := g.ConnectBridgeTopic("something.out"); err != nil {
 		log.Fatal(errors.Wrap(err, "failed to ConnectTopic"))
 	}
 
@@ -41,11 +41,11 @@ func main() {
 	go func() {
 		<-time.After(time.Second * time.Duration(5))
 		fmt.Println("sending 1")
-		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("world")))
+		pod.Send(grav.NewMsg("something.in", []byte("world")))
 
 		<-time.After(time.Second * time.Duration(5))
 		fmt.Println("sending 2")
-		pod.Send(grav.NewMsg(grav.MsgTypeDefault, []byte("again")))
+		pod.Send(grav.NewMsg("something.in", []byte("again")))
 	}()
 
 	<-time.After(time.Minute)

@@ -16,6 +16,8 @@ import (
 	"github.com/suborbital/vektor/vlog"
 )
 
+const MsgTypeWebsocketMessage = "websocket.message"
+
 var upgrader = websocket.Upgrader{}
 
 // Transport is a transport that connects Grav nodes via standard websockets
@@ -185,8 +187,9 @@ func (c *Conn) Start(recvFunc grav.ReceiveFunc, signaler *grav.WithdrawSignaler)
 
 			msg, err := grav.MsgFromBytes(message)
 			if err != nil {
-				c.log.Error(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes"))
-				continue
+				c.log.Debug(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes, falling back to raw data").Error())
+
+				msg = grav.NewMsg(MsgTypeWebsocketMessage, message)
 			}
 
 			c.log.Debug("[transport-websocket] received message", msg.UUID(), "via", c.nodeUUID)

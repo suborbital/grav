@@ -116,8 +116,9 @@ func (c *Conn) Start(pod *grav.Pod) {
 
 			msg, err := grav.MsgFromBytes(message.Data)
 			if err != nil {
-				c.log.Error(errors.Wrap(err, "[bridge-nats] failed to MsgFromBytes"))
-				continue
+				c.log.Debug(errors.Wrap(err, "[bridge-nats] failed to MsgFromBytes, falling back to raw data").Error())
+
+				msg = grav.NewMsg(c.topic, message.Data)
 			}
 
 			// send to the Grav instance

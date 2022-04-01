@@ -111,8 +111,9 @@ func (c *Conn) Start(pod *grav.Pod) {
 
 				msg, err := grav.MsgFromBytes(record.Value)
 				if err != nil {
-					c.log.Error(errors.Wrap(err, "[bridge-kafka] failed to MsgFromBytes"))
-					continue
+					c.log.Debug(errors.Wrap(err, "[bridge-kafka] failed to MsgFromBytes, falling back to raw data").Error())
+
+					msg = grav.NewMsg(c.topic, record.Value)
 				}
 
 				// send to the Grav instance

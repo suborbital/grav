@@ -7,12 +7,10 @@ import (
 
 // ErrConnectionClosed and others are transport and connection related errors
 var (
-	ErrConnectionClosed    = errors.New("connection was closed")
-	ErrNodeUUIDMismatch    = errors.New("handshake UUID did not match node UUID")
-	ErrBelongsToMismatch   = errors.New("new connection doesn't belongTo the same group or *")
-	ErrNotBridgeTransport  = errors.New("transport is not a bridge")
-	ErrBridgeOnlyTransport = errors.New("transport only supports bridge connection")
-	ErrNodeWithdrawn       = errors.New("node has withdrawn from the mesh")
+	ErrConnectionClosed  = errors.New("connection was closed")
+	ErrNodeUUIDMismatch  = errors.New("handshake UUID did not match node UUID")
+	ErrBelongsToMismatch = errors.New("new connection doesn't belongTo the same group or *")
+	ErrNodeWithdrawn     = errors.New("node has withdrawn from the mesh")
 )
 
 type (
@@ -33,11 +31,18 @@ type Withdraw struct {
 	Ack bool
 }
 
-// TransportOpts is a set of options for transports
-type TransportOpts struct {
+// MeshOptions is a set of options for mesh transports
+type MeshOptions struct {
 	NodeUUID string
 	Port     string
 	URI      string
+	Logger   *vlog.Logger
+	Custom   interface{}
+}
+
+// BridgeOptions is a set of options for mesh transports
+type BridgeOptions struct {
+	NodeUUID string
 	Logger   *vlog.Logger
 	Custom   interface{}
 }
@@ -46,15 +51,15 @@ type TransportOpts struct {
 type MeshTransport interface {
 	// Setup is a transport-specific function that allows bootstrapping
 	// Setup can block forever if needed; for example if a webserver is bring run
-	Setup(opts *TransportOpts, connFunc ConnectFunc) error
-	// CreateConnection connects to an endpoint and returns the Connection
-	CreateConnection(endpoint string) (Connection, error)
+	Setup(opts *MeshOptions, connFunc ConnectFunc) error
+	// Connect connects to an endpoint and returns the Connection
+	Connect(endpoint string) (Connection, error)
 }
 
 // BridgeTransport represents a transport plugin that connects to centralized brokers
 type BridgeTransport interface {
 	// Setup is a transport-specific function that allows bootstrapping
-	Setup(opts *TransportOpts) error
+	Setup(opts *BridgeOptions) error
 	// ConnectTopic connects to a topic and returns a BridgeConnection
 	ConnectTopic(topic string) (BridgeConnection, error)
 }

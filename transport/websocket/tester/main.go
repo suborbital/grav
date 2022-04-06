@@ -31,7 +31,7 @@ func main() {
 	g := grav.New(
 		grav.UseLogger(logger),
 		grav.UseEndpoint(port, ""),
-		grav.UseTransport(gwss),
+		grav.UseMeshTransport(gwss),
 		grav.UseDiscovery(locald),
 		grav.UseBelongsTo(b2),
 		grav.UseInterests(cap),

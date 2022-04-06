@@ -6,13 +6,14 @@ import (
 
 // Options represent Grav options
 type Options struct {
-	Logger    *vlog.Logger
-	Transport Transport
-	Discovery Discovery
-	Port      string
-	URI       string
-	BelongsTo string
-	Interests []string
+	Logger          *vlog.Logger
+	MeshTransport   MeshTransport
+	BridgeTransport BridgeTransport
+	Discovery       Discovery
+	Port            string
+	URI             string
+	BelongsTo       string
+	Interests       []string
 }
 
 // OptionsModifier is function that modifies an option
@@ -35,10 +36,17 @@ func UseLogger(logger *vlog.Logger) OptionsModifier {
 	}
 }
 
-// UseTransport sets the transport plugin to be used.
-func UseTransport(transport Transport) OptionsModifier {
+// UseMeshTransport sets the mesh transport plugin to be used.
+func UseMeshTransport(mesh MeshTransport) OptionsModifier {
 	return func(o *Options) {
-		o.Transport = transport
+		o.MeshTransport = mesh
+	}
+}
+
+// UseBridgeTransport sets the mesh transport plugin to be used.
+func UseBridgeTransport(bridge BridgeTransport) OptionsModifier {
+	return func(o *Options) {
+		o.BridgeTransport = bridge
 	}
 }
 
@@ -79,13 +87,14 @@ func UseInterests(interests ...string) OptionsModifier {
 
 func defaultOptions() *Options {
 	o := &Options{
-		BelongsTo: "*",
-		Interests: []string{},
-		Logger:    vlog.Default(),
-		Port:      "8080",
-		URI:       "/meta/message",
-		Transport: nil,
-		Discovery: nil,
+		BelongsTo:       "*",
+		Interests:       []string{},
+		Logger:          vlog.Default(),
+		Port:            "8080",
+		URI:             "/meta/message",
+		MeshTransport:   nil,
+		BridgeTransport: nil,
+		Discovery:       nil,
 	}
 
 	return o

@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/suborbital/grav/grav/tunnel"
 	"github.com/suborbital/grav/grav/withdraw"
 	"github.com/suborbital/vektor/vlog"
 )
 
-const capabilityBufferSize = 256
+const tunnelRetryCount = 32
 
 // hub is responsible for coordinating the transport and discovery plugins
 type hub struct {
@@ -27,25 +28,25 @@ type hub struct {
 	meshConnections   map[string]*connectionHandler
 	bridgeConnections map[string]BridgeConnection
 
-	capabilityUUIDBuffers map[string]*MsgBuffer
+	capabilityBalancers map[string]*tunnel.Balancer
 
 	lock sync.RWMutex
 }
 
 func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 	h := &hub{
-		nodeUUID:              nodeUUID,
-		belongsTo:             options.BelongsTo,
-		interests:             options.Interests,
-		mesh:                  options.MeshTransport,
-		bridge:                options.BridgeTransport,
-		discovery:             options.Discovery,
-		log:                   options.Logger,
-		connectFunc:           connectFunc,
-		meshConnections:       map[string]*connectionHandler{},
-		bridgeConnections:     map[string]BridgeConnection{},
-		capabilityUUIDBuffers: map[string]*MsgBuffer{},
-		lock:                  sync.RWMutex{},
+		nodeUUID:            nodeUUID,
+		belongsTo:           options.BelongsTo,
+		interests:           options.Interests,
+		mesh:                options.MeshTransport,
+		bridge:              options.BridgeTransport,
+		discovery:           options.Discovery,
+		log:                 options.Logger,
+		connectFunc:         connectFunc,
+		meshConnections:     map[string]*connectionHandler{},
+		bridgeConnections:   map[string]BridgeConnection{},
+		capabilityBalancers: map[string]*tunnel.Balancer{},
+		lock:                sync.RWMutex{},
 	}
 
 	// start mesh transport, then discovery if each have been configured (can have transport but no discovery)
@@ -271,11 +272,11 @@ func (h *hub) addConnection(connection Connection, uuid, belongsTo string, inter
 	h.meshConnections[uuid] = handler
 
 	for _, c := range interests {
-		if _, exists := h.capabilityUUIDBuffers[c]; !exists {
-			h.capabilityUUIDBuffers[c] = NewMsgBuffer(capabilityBufferSize)
+		if _, exists := h.capabilityBalancers[c]; !exists {
+			h.capabilityBalancers[c] = tunnel.NewBalancer()
 		}
 
-		h.capabilityUUIDBuffers[c].Push(NewMsg(c, []byte(uuid)))
+		h.capabilityBalancers[c].Add(uuid)
 	}
 }
 
@@ -295,6 +296,10 @@ func (h *hub) removeMeshConnection(uuid string) {
 	defer h.lock.Unlock()
 
 	h.log.Debug("[grav] removing connection for", uuid)
+
+	for _, balancer := range h.capabilityBalancers {
+		balancer.Remove(uuid)
+	}
 
 	delete(h.meshConnections, uuid)
 }
@@ -348,16 +353,15 @@ func (h *hub) scanFailedMeshConnections() {
 }
 
 func (h *hub) sendTunneledMessage(capability string, msg Message) error {
-	buffer, exists := h.capabilityUUIDBuffers[capability]
+	balancer, exists := h.capabilityBalancers[capability]
 	if !exists {
 		return ErrTunnelNotEstablished
 	}
 
 	// iterate a reasonable number of times to find a connection that's not removed or dead
-	for i := 0; i < capabilityBufferSize; i++ {
-		uuid := string(buffer.Next().Data())
-
+	for i := 0; i < tunnelRetryCount; i++ {
 		h.lock.RLock()
+		uuid := balancer.Next()
 		conn, exists := h.meshConnections[uuid]
 		h.lock.RUnlock()
 

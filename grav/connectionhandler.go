@@ -34,22 +34,20 @@ func (c *connectionHandler) Start() {
 	withdrawSignal := c.Signaler.Ctx.Done()
 
 	go func() {
+		<-withdrawSignal
+
+		c.Log.Debug("sending withdraw and disconnecting")
+
+		if err := c.Conn.SendWithdraw(&Withdraw{}); err != nil {
+			c.Log.Error(errors.Wrapf(err, "[grav] failed to SendWithdraw to connection %s", c.UUID))
+			c.ErrChan <- err
+		}
+
+		c.Signaler.DoneChan <- true
+	}()
+
+	go func() {
 		for {
-			select {
-			case <-withdrawSignal:
-				c.Log.Debug("sending withdraw and disconnecting")
-
-				if err := c.Conn.SendWithdraw(&Withdraw{}); err != nil {
-					c.Log.Error(errors.Wrapf(err, "[grav] failed to SendWithdraw to connection %s", c.UUID))
-					c.ErrChan <- err
-				}
-
-				c.Signaler.DoneChan <- true
-				return
-			default:
-				// continue as normal
-			}
-
 			msg, withdraw, err := c.Conn.ReadMsg()
 			if err != nil {
 				c.Log.Error(errors.Wrapf(err, "[grav] failed to SendMsg to connection %s", c.UUID))

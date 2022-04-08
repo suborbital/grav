@@ -2,6 +2,7 @@ package grav
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -178,7 +179,7 @@ func (h *hub) setupOutgoingConnection(connection Connection, uuid string) {
 
 		uuid = ack.UUID
 	} else if ack.UUID != uuid {
-		h.log.ErrorString("connection handshake Ack did not match Discovery Ack, terminating connection")
+		h.log.ErrorString(fmt.Sprintf("connection handshake Ack %s did not match Discovery Ack %s, terminating connection", ack.UUID, uuid))
 		connection.Close()
 		return
 	}

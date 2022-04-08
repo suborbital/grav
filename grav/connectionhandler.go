@@ -2,6 +2,7 @@ package grav
 
 import (
 	"github.com/pkg/errors"
+	"github.com/suborbital/grav/grav/withdraw"
 	"github.com/suborbital/vektor/vlog"
 )
 
@@ -9,7 +10,7 @@ type connectionHandler struct {
 	UUID      string
 	Conn      Connection
 	Pod       *Pod
-	Signaler  *WithdrawSignaler
+	Signaler  *withdraw.Signaler
 	ErrChan   chan error
 	BelongsTo string
 	Interests []string
@@ -19,7 +20,7 @@ type connectionHandler struct {
 // Start starts up a listener to read messages from the connection into the Grav bus
 func (c *connectionHandler) Start() {
 	c.Pod.On(func(msg Message) error {
-		if c.Signaler.PeerWithdrawn.Load().(bool) {
+		if c.Signaler.PeerWithdrawn() {
 			return nil
 		}
 
@@ -31,35 +32,41 @@ func (c *connectionHandler) Start() {
 		return nil
 	})
 
-	withdrawSignal := c.Signaler.Ctx.Done()
+	withdrawChan := c.Signaler.Listen()
 
 	go func() {
-		<-withdrawSignal
+		<-withdrawChan
 
-		c.Log.Debug("sending withdraw and disconnecting")
+		c.Log.Debug("[grav] sending withdraw and disconnecting")
 
 		if err := c.Conn.SendWithdraw(&Withdraw{}); err != nil {
 			c.Log.Error(errors.Wrapf(err, "[grav] failed to SendWithdraw to connection %s", c.UUID))
 			c.ErrChan <- err
 		}
 
-		c.Signaler.DoneChan <- true
+		c.Signaler.Done()
 	}()
 
 	go func() {
 		for {
 			msg, withdraw, err := c.Conn.ReadMsg()
 			if err != nil {
-				c.Log.Error(errors.Wrapf(err, "[grav] failed to SendMsg to connection %s", c.UUID))
-				c.ErrChan <- err
+				if !(c.Signaler.SelfWithdrawn() || c.Signaler.PeerWithdrawn()) {
+					c.Log.Error(errors.Wrapf(err, "[grav] failed to ReadMsg from connection %s", c.UUID))
+					c.ErrChan <- err
+				} else {
+					c.Log.Debug("[grav] failed to ReadMsg from withdrawn connection, ignoring:", err.Error())
+				}
+
 				return
 			}
 
 			if withdraw != nil {
-				c.Log.Debug("peer has withdrawn, disconnecting")
+				c.Log.Debug("[grav] peer has withdrawn, disconnecting")
 
 				c.Pod.Disconnect()
-				c.Signaler.PeerWithdrawn.Store(true)
+				c.Signaler.SetPeerWithdrawn()
+
 				return
 			}
 
@@ -73,7 +80,7 @@ func (c *connectionHandler) Close() error {
 	c.Pod.Disconnect()
 
 	if err := c.Conn.Close(); err != nil {
-		return errors.Wrap(err, "failed to Conn.Close")
+		return errors.Wrap(err, "[grav] failed to Conn.Close")
 	}
 
 	return nil

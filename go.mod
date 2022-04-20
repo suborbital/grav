@@ -7,7 +7,7 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/nats-io/nats.go v1.13.1-0.20220308171302-2f2f6968e98d
 	github.com/pkg/errors v0.9.1
-	github.com/schollz/peerdiscovery v1.6.10
+	github.com/schollz/peerdiscovery v1.6.11
 	github.com/suborbital/vektor v0.5.2
 	github.com/twmb/franz-go v1.2.6
 )
@@ -24,7 +24,7 @@ require (
 	github.com/twmb/franz-go/pkg/kmsg v0.0.0-20211221031712-1ac15de786fa // indirect
 	github.com/twmb/go-rbtree v1.0.0 // indirect
 	golang.org/x/crypto v0.0.0-20220313003712-b769efc7c000 // indirect
-	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f // indirect
+	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
 	golang.org/x/sys v0.0.0-20220310020820-b874c991c1a5 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220224211638-0e9765cccd65 // indirect

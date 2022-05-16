@@ -8,7 +8,7 @@ require (
 	github.com/nats-io/nats.go v1.15.0
 	github.com/pkg/errors v0.9.1
 	github.com/schollz/peerdiscovery v1.6.11
-	github.com/suborbital/vektor v0.5.2
+	github.com/suborbital/vektor v0.6.0
 	github.com/twmb/franz-go v1.5.2
 )
 
@@ -20,10 +20,10 @@ require (
 	github.com/nats-io/nkeys v0.3.0 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.14 // indirect
-	github.com/sethvargo/go-envconfig v0.4.0 // indirect
+	github.com/sethvargo/go-envconfig v0.6.0 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.0.0 // indirect
 	github.com/twmb/go-rbtree v1.0.0 // indirect
-	golang.org/x/crypto v0.0.0-20220427172511-eb4f295cb31f // indirect
+	golang.org/x/crypto v0.0.0-20220516162934-403b01795ae8 // indirect
 	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
 	golang.org/x/sys v0.0.0-20220310020820-b874c991c1a5 // indirect
 	golang.org/x/text v0.3.7 // indirect

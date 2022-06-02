@@ -42,6 +42,7 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 		bridge:              options.BridgeTransport,
 		discovery:           options.Discovery,
 		log:                 options.Logger,
+		pod:                 connectFunc(),
 		connectFunc:         connectFunc,
 		meshConnections:     map[string]*connectionHandler{},
 		bridgeConnections:   map[string]BridgeConnection{},
@@ -62,6 +63,11 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 			if err := h.mesh.Setup(transportOpts, h.handleIncomingConnection); err != nil {
 				h.log.Error(errors.Wrap(err, "[grav] failed to Setup transport"))
 			}
+
+			// send all messages to all mesh connections
+			h.pod.On(h.messageHandler)
+
+			h.log.Debug("mesh setup complete")
 		}()
 
 		if h.discovery != nil {
@@ -94,6 +100,20 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 	}
 
 	return h
+}
+
+// messageHandler takes each message coming from the bus and sends it to currently active mesh connections
+func (h *hub) messageHandler(msg Message) error {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
+	// send the message to each. withdrawn connections will result in a no-op
+	for uuid := range h.meshConnections {
+		handler := h.meshConnections[uuid]
+		handler.Send(msg)
+	}
+
+	return nil
 }
 
 func (h *hub) discoveryHandler() func(endpoint string, uuid string) {
@@ -396,8 +416,8 @@ func (h *hub) withdraw() error {
 		doneChans[uuid] = conn.Signaler.Signal()
 	}
 
-	// the withdraw attempt will time out after 5 seconds
-	timeoutChan := time.After(time.Second * 5)
+	// the withdraw attempt will time out after 3 seconds
+	timeoutChan := time.After(time.Second * 3)
 	doneChan := make(chan bool)
 
 	go func() {

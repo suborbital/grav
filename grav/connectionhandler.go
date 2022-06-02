@@ -19,19 +19,6 @@ type connectionHandler struct {
 
 // Start starts up a listener to read messages from the connection into the Grav bus
 func (c *connectionHandler) Start() {
-	c.Pod.On(func(msg Message) error {
-		if c.Signaler.PeerWithdrawn() {
-			return nil
-		}
-
-		if err := c.Conn.SendMsg(msg); err != nil {
-			c.Log.Error(errors.Wrapf(err, "[grav] failed to SendMsg to connection %s", c.UUID))
-			c.ErrChan <- err
-		}
-
-		return nil
-	})
-
 	withdrawChan := c.Signaler.Listen()
 
 	go func() {
@@ -73,6 +60,17 @@ func (c *connectionHandler) Start() {
 			c.Pod.Send(msg)
 		}
 	}()
+}
+
+func (c *connectionHandler) Send(msg Message) {
+	if c.Signaler.PeerWithdrawn() {
+		return
+	}
+
+	if err := c.Conn.SendMsg(msg); err != nil {
+		c.Log.Error(errors.Wrapf(err, "[grav] failed to SendMsg to connection %s", c.UUID))
+		c.ErrChan <- err
+	}
 }
 
 // Close stops outgoing messages and closes the underlying connection

@@ -25,7 +25,7 @@ var upgrader = websocket.Upgrader{}
 
 // Transport is a transport that connects Grav nodes via standard websockets
 type Transport struct {
-	opts *grav.TransportOpts
+	opts *grav.MeshOptions
 	log  *vlog.Logger
 
 	connectionFunc grav.ConnectFunc
@@ -50,7 +50,7 @@ func New() *Transport {
 }
 
 // Setup sets up the transport
-func (t *Transport) Setup(opts *grav.TransportOpts, connFunc grav.ConnectFunc) error {
+func (t *Transport) Setup(opts *grav.MeshOptions, connFunc grav.ConnectFunc) error {
 	// independent serving is not yet implemented, use the HTTP handler
 
 	t.opts = opts
@@ -60,8 +60,8 @@ func (t *Transport) Setup(opts *grav.TransportOpts, connFunc grav.ConnectFunc) e
 	return nil
 }
 
-// CreateConnection adds a websocket endpoint to emit messages to
-func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
+// Connect adds a websocket endpoint to emit messages to
+func (t *Transport) Connect(endpoint string) (grav.Connection, error) {
 	if !strings.HasPrefix(endpoint, "ws") {
 		endpoint = fmt.Sprintf("ws://%s", endpoint)
 	}
@@ -153,7 +153,9 @@ func (c *Conn) ReadMsg() (grav.Message, *grav.Withdraw, error) {
 
 	msg, err := grav.MsgFromBytes(message)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes")
+		c.log.Debug(errors.Wrap(err, "[transport-websocket] failed to MsgFromBytes, falling back to raw data").Error())
+
+		msg = grav.NewMsg(MsgTypeWebsocketMessage, message)
 	}
 
 	c.log.Debug("[transport-websocket] received message", msg.UUID(), "via", c.nodeUUID)

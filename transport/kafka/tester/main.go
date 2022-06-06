@@ -21,7 +21,7 @@ func main() {
 
 	g := grav.New(
 		grav.UseLogger(logger),
-		grav.UseTransport(knats),
+		grav.UseBridgeTransport(knats),
 	)
 
 	if err := g.ConnectBridgeTopic("something.in"); err != nil {

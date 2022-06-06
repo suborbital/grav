@@ -21,7 +21,7 @@ func main() {
 
 	g := grav.New(
 		grav.UseLogger(logger),
-		grav.UseTransport(gnats),
+		grav.UseBridgeTransport(gnats),
 	)
 
 	if err := g.ConnectBridgeTopic(grav.MsgTypeDefault); err != nil {

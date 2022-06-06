@@ -11,7 +11,7 @@ import (
 
 // Transport is a transport that connects Grav nodes via NATS
 type Transport struct {
-	opts *grav.TransportOpts
+	opts *grav.BridgeOptions
 	log  *vlog.Logger
 
 	serverConn *nats.Conn
@@ -44,7 +44,7 @@ func New(endpoint string) (*Transport, error) {
 }
 
 // Setup sets up the transport
-func (t *Transport) Setup(opts *grav.TransportOpts) error {
+func (t *Transport) Setup(opts *grav.BridgeOptions) error {
 	t.opts = opts
 	t.log = opts.Logger
 

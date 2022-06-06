@@ -40,7 +40,7 @@ func (d *Discovery) Start(opts *grav.DiscoveryOpts, discoveryFunc grav.Discovery
 	d.discoveryFunc = discoveryFunc
 	d.stopChan = make(chan struct{})
 
-	d.log.Info("[discovery-local] starting discovery, advertising endpoint", opts.TransportPort, opts.TransportURI)
+	d.log.Debug("[discovery-local] starting discovery, advertising endpoint", opts.TransportPort, opts.TransportURI)
 
 	payloadFunc := func() []byte {
 		payload := payload{

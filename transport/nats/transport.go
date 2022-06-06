@@ -11,7 +11,7 @@ import (
 
 // Transport is a transport that connects Grav nodes via NATS
 type Transport struct {
-	opts *grav.TransportOpts
+	opts *grav.BridgeOptions
 	log  *vlog.Logger
 
 	serverConn *nats.Conn
@@ -43,27 +43,16 @@ func New(endpoint string) (*Transport, error) {
 	return t, nil
 }
 
-// Type returns the transport's type
-func (t *Transport) Type() grav.TransportType {
-	return grav.TransportTypeBridge
-}
-
 // Setup sets up the transport
-func (t *Transport) Setup(opts *grav.TransportOpts, connFunc grav.ConnectFunc, findFunc grav.FindFunc) error {
+func (t *Transport) Setup(opts *grav.BridgeOptions) error {
 	t.opts = opts
 	t.log = opts.Logger
-	t.connectionFunc = connFunc
 
 	return nil
 }
 
-// CreateConnection adds an endpoint to emit messages to
-func (t *Transport) CreateConnection(endpoint string) (grav.Connection, error) {
-	return nil, grav.ErrBridgeOnlyTransport
-}
-
-// ConnectBridgeTopic connects to a topic if the transport is a bridge
-func (t *Transport) ConnectBridgeTopic(topic string) (grav.TopicConnection, error) {
+// ConnectTopic connects to a topic if the transport is a bridge
+func (t *Transport) ConnectTopic(topic string) (grav.BridgeConnection, error) {
 	sub, err := t.serverConn.SubscribeSync(topic)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to SubscribeSync")
@@ -130,6 +119,7 @@ func (c *Conn) Start(pod *grav.Pod) {
 // Close closes the underlying connection
 func (c *Conn) Close() {
 	c.log.Debug("[bridge-nats] connection for", c.topic, "is closing")
+
 	if err := c.sub.Unsubscribe(); err != nil {
 		c.log.Error(errors.Wrapf(err, "[bridge-nats] connection for %s failed to close", c.topic))
 	}

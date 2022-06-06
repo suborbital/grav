@@ -7,13 +7,13 @@ import (
 
 // AsyncCounter is an async counter
 type AsyncCounter struct {
-	countChan chan bool
+	countChan chan struct{}
 }
 
 // NewAsyncCounter creates a new AsyncCounter
 func NewAsyncCounter(size int) *AsyncCounter {
 	t := &AsyncCounter{
-		countChan: make(chan bool, size),
+		countChan: make(chan struct{}, size),
 	}
 
 	return t
@@ -22,7 +22,7 @@ func NewAsyncCounter(size int) *AsyncCounter {
 // Count increments the counter
 func (a *AsyncCounter) Count() {
 	go func() {
-		a.countChan <- true
+		a.countChan <- struct{}{}
 	}()
 }
 

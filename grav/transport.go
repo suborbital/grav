@@ -7,17 +7,10 @@ import (
 
 // ErrConnectionClosed and others are transport and connection related errors
 var (
-	ErrConnectionClosed    = errors.New("connection was closed")
-	ErrNodeUUIDMismatch    = errors.New("handshake UUID did not match node UUID")
-	ErrBelongsToMismatch   = errors.New("new connection doesn't belongTo the same group or *")
-	ErrNotBridgeTransport  = errors.New("transport is not a bridge")
-	ErrBridgeOnlyTransport = errors.New("transport only supports bridge connection")
-	ErrNodeWithdrawn       = errors.New("node has withdrawn from the mesh")
-)
-
-var (
-	TransportTypeMesh   = TransportType("transport.mesh")
-	TransportTypeBridge = TransportType("transport.bridge")
+	ErrConnectionClosed  = errors.New("connection was closed")
+	ErrNodeUUIDMismatch  = errors.New("handshake UUID did not match node UUID")
+	ErrBelongsToMismatch = errors.New("new connection doesn't belongTo the same group or *")
+	ErrNodeWithdrawn     = errors.New("node has withdrawn from the mesh")
 )
 
 type (
@@ -27,14 +20,19 @@ type (
 	ConnectFunc func(Connection)
 	// FindFunc allows a Transport to query Grav for an active connection for the given UUID
 	FindFunc func(uuid string) (Connection, bool)
-	// TransportType defines the type of Transport (mesh or bridge)
-	TransportType string
-	// HandshakeCallback allows the hub to determine if a connection should be acceted
+	// HandshakeCallback allows the hub to determine if a connection should be accepted
 	HandshakeCallback func(*TransportHandshake) *TransportHandshakeAck
 )
 
-// TransportOpts is a set of options for transports
-type TransportOpts struct {
+// Withdraw is a type used to indicate that a Withdraw is occuring
+// Withdraws are sent / recieved in transport-specific ways (can vary)
+// If Ack is true, it indicates the value is an Ack to a Withdraw message
+type Withdraw struct {
+	Ack bool
+}
+
+// MeshOptions is a set of options for mesh transports
+type MeshOptions struct {
 	NodeUUID string
 	Port     string
 	URI      string
@@ -42,38 +40,48 @@ type TransportOpts struct {
 	Custom   interface{}
 }
 
-// Transport represents a Grav transport plugin
-type Transport interface {
-	// Type returns the transport's type (mesh or bridge)
-	Type() TransportType
-	// Setup is a transport-specific function that allows bootstrapping
-	// Setup can block forever if needed; for example if a webserver is bring run
-	Setup(opts *TransportOpts, connFunc ConnectFunc, findFunc FindFunc) error
-	// CreateConnection connects to an endpoint and returns the Connection
-	CreateConnection(endpoint string) (Connection, error)
-	// ConnectBridgeTopic connects to a topic and returns a TopicConnection
-	ConnectBridgeTopic(topic string) (TopicConnection, error)
+// BridgeOptions is a set of options for mesh transports
+type BridgeOptions struct {
+	NodeUUID string
+	Logger   *vlog.Logger
+	Custom   interface{}
 }
 
-// Connection represents a connection to another node
+// MeshTransport represents a transport plugin for connecting to meshed peers
+type MeshTransport interface {
+	// Setup is a transport-specific function that allows bootstrapping
+	// Setup can block forever if needed; for example if a webserver is bring run
+	Setup(opts *MeshOptions, connFunc ConnectFunc) error
+	// Connect connects to an endpoint and returns the Connection
+	Connect(endpoint string) (Connection, error)
+}
+
+// BridgeTransport represents a transport plugin that connects to centralized brokers
+type BridgeTransport interface {
+	// Setup is a transport-specific function that allows bootstrapping
+	Setup(opts *BridgeOptions) error
+	// ConnectTopic connects to a topic and returns a BridgeConnection
+	ConnectTopic(topic string) (BridgeConnection, error)
+}
+
+// Connection represents a connection to another node in the mesh
 type Connection interface {
-	// Called when the connection handshake is complete and the connection can actively start exchanging messages
-	// The Connection is responsible for sending a 'withdraw' message when the provided context is canceled
-	Start(recvFunc ReceiveFunc, signaler *WithdrawSignaler)
-	// Send a message from the local instance to the connected node
-	Send(msg Message) error
-	// CanReplace returns true if the connection can be replaced (i.e. is not a persistent connection like a websocket)
-	CanReplace() bool
+	// SendMsg a message from the local instance to the connected node
+	SendMsg(msg Message) error
+	// ReadMsg prompts the connection to read the next incoming message, and returns either a message or a withdraw (if recieved)
+	ReadMsg() (Message, *Withdraw, error)
 	// Initiate a handshake for an outgoing connection and return the remote Ack
-	DoOutgoingHandshake(handshake *TransportHandshake) (*TransportHandshakeAck, error)
-	// Wait for an incoming handshake and return the provided Ack to the remote connection
-	DoIncomingHandshake(HandshakeCallback) (*TransportHandshake, error)
+	OutgoingHandshake(handshake *TransportHandshake) (*TransportHandshakeAck, error)
+	// Wait for an incoming handshake and allow the hub to determine what ack to send using the HandshakeCallback
+	IncomingHandshake(HandshakeCallback) error
+	// SendWithdraw indicates the connection should send the transport-specific withdraw message
+	SendWithdraw(*Withdraw) error
 	// Close requests that the Connection close itself
 	Close() error
 }
 
-// TopicConnection is a connection to something via a bridge such as a topic
-type TopicConnection interface {
+// BridgeConnection is a connection to something via a bridge such as a topic
+type BridgeConnection interface {
 	// Called when the connection can actively start exchanging messages
 	Start(pod *Pod)
 	// Close requests that the Connection close itself

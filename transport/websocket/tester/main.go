@@ -55,7 +55,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		logger.Info("withdrew and stopped!")
+		logger.Debug("withdrew and stopped!")
 		os.Exit(0)
 	}()
 

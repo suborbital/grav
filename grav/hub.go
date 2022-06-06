@@ -67,7 +67,8 @@ func initHub(nodeUUID string, options *Options, connectFunc func() *Pod) *hub {
 			// send all messages to all mesh connections
 			h.pod.On(h.messageHandler)
 
-			h.log.Debug("mesh setup complete")
+			// scan forever to remove failed connections
+			h.scanFailedMeshConnections()
 		}()
 
 		if h.discovery != nil {
@@ -279,7 +280,7 @@ func (h *hub) addConnection(connection Connection, uuid, belongsTo string, inter
 	handler := &connectionHandler{
 		UUID:      uuid,
 		Conn:      connection,
-		Pod:       h.connectFunc(),
+		Pod:       h.pod,
 		Signaler:  signaler,
 		ErrChan:   make(chan error),
 		BelongsTo: belongsTo,
@@ -382,14 +383,14 @@ func (h *hub) sendTunneledMessage(capability string, msg Message) error {
 	for i := 0; i < tunnelRetryCount; i++ {
 		h.lock.RLock()
 		uuid := balancer.Next()
-		conn, exists := h.meshConnections[uuid]
+		handler, exists := h.meshConnections[uuid]
 		h.lock.RUnlock()
 
-		if exists && conn.Conn != nil {
-			if err := conn.Conn.SendMsg(msg); err != nil {
+		if exists && handler.Conn != nil {
+			if err := handler.Send(msg); err != nil {
 				h.log.Error(errors.Wrap(err, "[grav] failed to SendMsg on tunneled connection, will remove"))
-				h.removeMeshConnection(uuid)
 			} else {
+				h.log.Debug("[grav] tunneled to", uuid)
 				return nil
 			}
 		}

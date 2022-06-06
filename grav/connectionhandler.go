@@ -51,32 +51,33 @@ func (c *connectionHandler) Start() {
 			if withdraw != nil {
 				c.Log.Debug("[grav] peer has withdrawn, disconnecting")
 
-				c.Pod.Disconnect()
 				c.Signaler.SetPeerWithdrawn()
 
 				return
 			}
+
+			c.Log.Debug("received message", msg.UUID())
 
 			c.Pod.Send(msg)
 		}
 	}()
 }
 
-func (c *connectionHandler) Send(msg Message) {
+func (c *connectionHandler) Send(msg Message) error {
 	if c.Signaler.PeerWithdrawn() {
-		return
+		return ErrNodeWithdrawn
 	}
 
 	if err := c.Conn.SendMsg(msg); err != nil {
-		c.Log.Error(errors.Wrapf(err, "[grav] failed to SendMsg to connection %s", c.UUID))
 		c.ErrChan <- err
+		return errors.Wrap(err, "failed to SendMsg")
 	}
+
+	return nil
 }
 
 // Close stops outgoing messages and closes the underlying connection
 func (c *connectionHandler) Close() error {
-	c.Pod.Disconnect()
-
 	if err := c.Conn.Close(); err != nil {
 		return errors.Wrap(err, "[grav] failed to Conn.Close")
 	}

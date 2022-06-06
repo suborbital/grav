@@ -408,7 +408,7 @@ func (h *hub) withdraw() error {
 		h.discovery.Stop()
 	}
 
-	doneChans := map[string]chan bool{}
+	doneChans := map[string]chan struct{}{}
 
 	// indicate to each signaler that the withdraw should begin
 	for uuid := range h.meshConnections {
@@ -419,7 +419,7 @@ func (h *hub) withdraw() error {
 
 	// the withdraw attempt will time out after 3 seconds
 	timeoutChan := time.After(time.Second * 3)
-	doneChan := make(chan bool)
+	doneChan := make(chan struct{})
 
 	go func() {
 		count := len(h.meshConnections)
@@ -439,7 +439,7 @@ func (h *hub) withdraw() error {
 			}
 
 			if count == 0 {
-				doneChan <- true
+				doneChan <- struct{}{}
 				break
 			}
 		}

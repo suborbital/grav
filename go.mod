@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
-	github.com/nats-io/nats.go v1.15.0
+	github.com/nats-io/nats.go v1.17.0
 	github.com/pkg/errors v0.9.1
 	github.com/schollz/peerdiscovery v1.6.11
 	github.com/suborbital/vektor v0.5.3-0.20220606154347-af1e678993a8

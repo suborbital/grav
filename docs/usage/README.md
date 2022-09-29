@@ -20,5 +20,5 @@ func gettingStarted() {
 }
 ```
 
-Every Grav instance gets a UUID so that it can can identify itself to other instances when meshing is in use. `grav.New` can take a set of [options](https://github.com/suborbital/grav/docs/usage/getting-started/grav-instance-options.md), but for an in-process Grav instance, no options are needed.
+Every Grav instance gets a UUID so that it can can identify itself to other instances when meshing is in use. `grav.New` can take a set of [options](https://github.com/suborbital/grav/docs/usage/grav-instance-options.md), but for an in-process Grav instance, no options are needed.
 

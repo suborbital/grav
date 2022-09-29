@@ -1,3 +1,5 @@
+## Grav has been deprecated. You can use the new [bus package](https://github.com/suborbital/e2core/tree/main/bus), which is a drop-in continuation of this project. 
+
 # Grav Instance Options
 
 When calling `grav.New`, you can optionally include some options:

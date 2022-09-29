@@ -1,3 +1,5 @@
+## Grav has been deprecated. You can use the new [bus package](https://github.com/suborbital/e2core/tree/main/bus), which is a drop-in continuation of this project
+
 # Transports
 
 Transports are plugins that allow Grav instances to connect to one another over the network. In order to keep Grav itself as simple as possible, all messages remain in-process only unless a transport plugin is configured.

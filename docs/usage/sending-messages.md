@@ -1,3 +1,5 @@
+## Grav has been deprecated. You can use the new [bus package](https://github.com/suborbital/e2core/tree/main/bus), which is a drop-in continuation of this project. 
+
 # Sending Messages
 
 Sending a message using a Pod is as simple as calling `Send(msg)`. The only required field is the message type, which is analogous to a topic or subject in other messaging systems. Messages have a few other properties that can be taken advantage of, which will be discussed in a future section.

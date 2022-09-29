@@ -1,4 +1,0 @@
-# Background
-
-In a search for the right messaging system to use in concert with [Reactr](https://github.com/suborbital/reactr) and [Vektor](https://github.com/suborbital/vektor), many options were evaluated. Unfortunately, every option either required the use of CGO, or relied on a centralized broker which would complicate deployments. Reluctantly, the decision was made to implement a message bus of our own. I say reluctantly as there is nothing worse than re-inventing the wheel, but alas none of the mainstream projects support the use-cases that Suborbital's frameworks are aiming to handle. To avoid "Yak Shaving" as much as possible, Grav is designed to be a powerful core that is focused on being a very reliable, performant message bus. Anything beyond that, including the transport layer, is provided via a plugin, not Grav itself.
-

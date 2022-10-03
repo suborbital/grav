@@ -33,7 +33,7 @@ func useGravInstance() {
 
 ```
 
-Here we can see Pods being created, and the two main Pod methods being used. [Read about Pods](https://github.com/suborbital/grav/docs/concepts/pods.md) if you haven't already.
+Here we can see Pods being created, and the two main Pod methods being used. [Read about Pods](../concepts/pods.md) if you haven't already.
 
 Each time `On` is called, the function used to receive messages gets **replaced,** therefore if multiple receiving functions are needed, multiple Pods should be created.
 

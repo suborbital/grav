@@ -38,7 +38,7 @@ func requestReply() {
 
 ```
 
-This is an example of [Receipts](Suborbital/grav/docs/concepts/receipts.md) in action. When a message is sent, the `MsgReceipt` is returned, and then the `WaitOn` method is used to retrieve a reply from the message stream.
+This is an example of [Receipts](../concepts/receipts.md) in action. When a message is sent, the `MsgReceipt` is returned, and then the `WaitOn` method is used to retrieve a reply from the message stream.
 
 `WaitOn` will block forever until a reply is received. There is an alternate method `WaitUntil` that accepts a timeout. Since a receipt is an extension of the Pod that created it, calling any of its methods will replace the receive function for the Pod. 
 

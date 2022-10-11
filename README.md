@@ -1,4 +1,4 @@
-## Grav has been deprecated. You can use the new [bus package](https://github.com/suborbital/e2core/tree/main/bus), which is a drop-in continuation of this project. You can find the [docs](https://github,com/suborbital/grav/docs) for this deprecated project in this repo.
+## Grav has been deprecated. You can use the new [bus package](https://github.com/suborbital/e2core/tree/main/bus), which is a drop-in continuation of this project. You can find the [docs](https://github.com/suborbital/grav/docs) for this deprecated project in this repo.
 
 Grav is an embedded distributed messaging library for Go applications. Grav allows interconnected components of your system to communicate effectively in a reliable, asynchronous manner. HTTP and RPC are hard to scale well in modern distributed systems, so we created Grav to add a performant and resilient messaging system to various distributed environments.
 

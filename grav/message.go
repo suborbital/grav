@@ -21,6 +21,9 @@ type MsgFunc func(Message) error
 // MsgChan is a channel that accepts a message
 type MsgChan chan Message
 
+// msgOriginChan is a channel that accepts a message with an origin
+type msgOriginChan chan messageWithOrigin
+
 // Message represents a message
 type Message interface {
 	// Unique ID for this message
@@ -43,6 +46,13 @@ type Message interface {
 	Marshal() ([]byte, error)
 	// Unmarshal encoded Message into object
 	Unmarshal([]byte) error
+}
+
+type messageWithOrigin struct {
+	Message
+
+	// originUUID is the UUID of the pod from which the message originated.
+	originUUID string
 }
 
 // NewMsg creates a new Message with the built-in `_message` type
